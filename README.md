@@ -25,11 +25,11 @@ Project_team3
 ```
 예시)
 Project_team3    
-├── README  
- news_crawling       
-          ├── LLM_sample
-          ├── naver_news
-          └── bigkinds_news   
+├── .idea        
+    └── .gitignore        
+├── .gitignore        
+└── README     
+
 
 
 
