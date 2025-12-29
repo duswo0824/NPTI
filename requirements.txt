@@ -1,0 +1,22 @@
+# server
+fastapi
+uvicorn
+python-multipart
+
+# DB & ES
+pymysql
+sqlalchemy
+elasticsearch
+
+# crawling
+selenium
+
+# 전처리
+pandas
+kiwipiepy
+
+# 머신러닝
+scikit-learn
+
+# 시각화
+matplotlib
