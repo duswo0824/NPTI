@@ -11,6 +11,10 @@ elasticsearch
 # crawling
 selenium
 
+# scheduler
+apscheduler
+psutil
+
 # 전처리
 pandas
 kiwipiepy
