@@ -74,7 +74,7 @@ def news_aggr_start():
 
 
 @app.get("/news_raw_csv")
-def news_raw_csv(q: Optional[str] = None):
+def get_news_raw(q: Optional[str] = None):
     logger.info(f"ES 데이터 조회 요청: query={q}")
     try:
         news_list = get_news_raw(q)
