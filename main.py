@@ -1,22 +1,10 @@
-import hashlib
-import pandas as pd
 from fastapi import FastAPI
-from selenium.webdriver.chromium.options import ChromiumOptions
-from selenium.webdriver.chrome.service import Service
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.wait import WebDriverWait
-from selenium.webdriver.support import expected_conditions as ec
 from bigkinds_crawling.scheduler import sch_start
-
 from bigkinds_crawling.sample import sample_crawling, get_sample
 from logger import Logger
-import time
 from typing import Optional
-from elasticsearch_index.es_raw import ensure_news_raw, index_sample_row, search_news_row, tokens
-from elasticsearch_index.es_raw import es, ES_INDEX
-from kiwipiepy import Kiwi
-from bigkinds_crawling.news_raw import news_crawling, get_news_raw, news_aggr
+from bigkinds_crawling.news_raw import news_crawling, get_news_raw
+from bigkinds_crawling.news_aggr_grouping import news_aggr
 
 app = FastAPI()
 logger = Logger().get_logger(__name__)
@@ -67,14 +55,11 @@ async def scheduler_start():
     else:
         return {'msg': '이미 실행 중입니다.'}
 
-@app.get("/news_aggr")
-def news_aggr_start():
-    tfid = news_aggr()
-    return tfid
+
 
 
 @app.get("/news_raw_csv")
-def get_news_raw(q: Optional[str] = None):
+def news_raw_csv(q: Optional[str] = None):
     logger.info(f"ES 데이터 조회 요청: query={q}")
     try:
         news_list = get_news_raw(q)
