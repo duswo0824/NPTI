@@ -1,0 +1,375 @@
+/* ================= VARIABLES & RESET ================= */
+:root {
+    --orange: #FF6B00;
+    --blue: #0057FF;
+    --black: #111111;
+    --dark-gray: #333333;
+    --light-gray: #888888;
+    --border: #E5E5E5;
+    --bg-light: #F9F9F9;
+}
+
+html {
+    overflow-y: scroll;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Pretendard', -apple-system, sans-serif;
+    color: var(--black);
+    line-height: 1.5;
+    letter-spacing: -0.02em;
+}
+
+a {
+    text-decoration: none;
+    color: inherit;
+    display: inline-block;
+}
+
+button {
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+ul {
+    list-style: none;
+}
+
+/* 유틸리티 & 헤더 (기존 코드 유지) */
+.container {
+    width: 1180px;
+    margin: 0 auto;
+    position: relative;
+}
+
+/* ... (기존 헤더 CSS 생략, 위쪽 코드와 동일하게 적용해주세요) ... */
+/* 편의를 위해 헤더 필수 CSS만 요약해서 넣습니다 */
+.header {
+    padding-top: 24px;
+}
+
+.header-inner {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 24px;
+}
+
+.search-bubble {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border: 1px solid var(--orange);
+    border-radius: 50px;
+    padding: 5px 20px 5px 8px;
+}
+
+.icon-circle {
+    width: 28px;
+    height: 28px;
+    background: var(--orange);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+}
+
+.search-bubble .text {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--orange);
+    padding-top: 1px;
+}
+
+.header-center {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.logo h1 {
+    font-size: 60px;
+    font-weight: 900;
+    color: var(--orange);
+    line-height: 0.9;
+    letter-spacing: -1px;
+    margin-bottom: 4px;
+}
+
+.header-center p {
+    font-size: 14px;
+    color: rgba(17, 17, 17, 0.5);
+    font-weight: 500;
+    letter-spacing: -0.2px;
+}
+
+.header-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 12px;
+}
+
+.login-link {
+    font-size: 13px;
+    color: #666;
+    font-weight: 500;
+}
+
+.login-link:hover {
+    color: var(--orange);
+}
+
+.icons {
+    display: flex;
+    gap: 12px;
+}
+
+.icon-btn {
+    padding: 10px;
+    font-size: 22px;
+    transition: transform 0.2s;
+}
+
+.icon-btn.search {
+    color: var(--blue);
+}
+
+.icon-btn.user {
+    color: var(--orange);
+}
+
+.divider {
+    border-bottom: 1px solid var(--border);
+}
+
+
+/* ================= LOGIN PAGE STYLES ================= */
+
+.login-section {
+    padding: 100px 0;
+    /* 위아래 여백 */
+    display: flex;
+    justify-content: center;
+}
+
+.login-container {
+    width: 400px;
+    /* 로그인 폼 너비 고정 */
+    text-align: center;
+}
+
+/* 로그인 헤더 (제목 + 설명) */
+.login-header {
+    margin-bottom: 40px;
+}
+
+.login-header h2 {
+    font-size: 32px;
+    font-weight: 800;
+    margin-bottom: 12px;
+    color: var(--black);
+}
+
+.login-header p {
+    font-size: 15px;
+    color: #888;
+    line-height: 1.4;
+}
+
+/* 폼 스타일 */
+.login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    /* 인풋 그룹 간 간격 */
+    margin-bottom: 24px;
+}
+
+.input-group {
+    text-align: left;
+}
+
+.input-group label {
+    display: block;
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--black);
+}
+
+/* 인풋 + 삭제버튼 감싸는 래퍼 */
+.input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.input-wrapper input {
+    width: 100%;
+    padding: 14px 40px 14px 16px;
+    /* 오른쪽 패딩은 버튼 공간 확보 */
+    border: 1px solid rgba(17, 17, 17, 0.5);
+    border-radius: 8px;
+    /* 둥근 모서리 */
+    font-size: 16px;
+    outline: none;
+    transition: border-color 0.2s;
+    font-family: inherit;
+}
+
+.input-wrapper input::placeholder {
+    color: #bbb;
+}
+
+.input-wrapper input:focus {
+    border-color: var(--black);
+    /* 포커스 시 테두리 진하게 */
+}
+
+/* X 버튼 (인풋 내부) */
+.btn-clear {
+    position: absolute;
+    right: 12px;
+    color: #bbb;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-clear:hover {
+    color: #888;
+}
+
+/* 에러 메시지 */
+.error-message {
+    font-size: 14px;
+    color: var(--blue);
+    font-weight: 600;
+    margin-top: 0px;
+    text-align: center;
+    display: none;
+}
+
+.error-message.show {
+    display: block;
+}
+
+/* 로그인 [기본 상태 & 활성 상태] : 주황색 */
+.btn-submit {
+    width: 100%;
+    background-color: var(--orange);
+    /* 활성화되면 주황색 */
+    color: #fff;
+    font-size: 16px;
+    font-weight: 700;
+    padding: 16px 0;
+    border-radius: 8px;
+    margin-top: 10px;
+    transition: all 0.3s;
+    cursor: pointer;
+}
+
+/* [비활성 상태] : 회색 & 클릭 금지 */
+/* HTML에 disabled 속성이 붙으면 이 스타일이 적용됩니다 */
+.btn-submit:disabled {
+    background-color: #ccc; /* 회색 배경 */
+    color: #fff;
+    cursor: default; /* 마우스 커서 기본(손가락 아님) */
+    pointer-events: none; /* 클릭 자체를 막음 */
+}
+
+/* 회원가입 링크 */
+.signup-area {
+    font-size: 14px;
+    color: #666;
+}
+
+.link-signup {
+    color: var(--orange);
+    font-weight: 700;
+    margin-left: 8px;
+    text-decoration: underline;
+    /* 텍스트 밑줄 (선택사항) */
+    text-underline-position: under;
+}
+
+/* ================= CUSTOM MODAL (팝업) ================= */
+
+/* 1. 배경 (어둡게 처리) */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(17, 17, 17, 0.1);
+    z-index: 9999;
+    display: none;
+    justify-content: center;
+    align-items: center;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+/* 2. 팝업창 (흰색 박스) */
+.modal-box {
+    background: #fff;
+    padding: 20px 30px;
+    width: 450px;
+    border-radius: 10px;
+    text-align: center;
+    box-shadow: 0 4px 20px rgba(17, 17, 17, 0.1);
+    transform: translateY(20px);
+    transition: transform 0.3s ease;
+    margin-bottom: 100px;
+}
+
+/* 3. 텍스트 */
+.modal-message {
+    font-size: 16px;
+    font-weight: 400;
+    color: #111;
+    margin-bottom: 24px;
+    line-height: 1.5;
+    word-break: keep-all;
+}
+
+/* 4. 확인 버튼 (주황색) */
+.modal-btn {
+    background-color: var(--orange);
+    color: #fff;
+    border: none;
+    padding: 12px 0;
+    width: 100%;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+/* 5. 활성화 애니메이션 (JS가 .show를 붙이면 나타남) */
+.modal-overlay.show {
+    display: flex;
+    opacity: 1;
+}
+
+.modal-overlay.show .modal-box {
+    transform: translateY(0);
+}
