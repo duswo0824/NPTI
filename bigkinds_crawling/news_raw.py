@@ -1,5 +1,4 @@
 import hashlib
-import pandas as pd
 import time
 from selenium import webdriver
 from selenium.webdriver.chromium.options import ChromiumOptions
@@ -10,14 +9,13 @@ from selenium.webdriver.support import expected_conditions as ec
 from kiwipiepy import Kiwi
 from typing import Optional
 from elasticsearch_index.es_raw import es, ES_INDEX
-from datetime import datetime, timezone
+from datetime import datetime
 from logger import Logger
 from elasticsearch_index.es_raw import (
     ensure_news_raw, index_sample_row, search_news_row, tokens
 )
 from elasticsearch_index.es_err_bigkinds import index_error_log
-from sklearn.feature_extraction.text import TfidfVectorizer
-from elasticsearch import helpers
+
 
 logger = Logger().get_logger(__name__)
 
@@ -68,6 +66,7 @@ def news_crawling(max_pages: int):
                         link = link_elem[0].get_attribute("href")
                         news_id = hashlib.sha256(link.split('//', 1)[1].encode()).hexdigest()
                     else:
+                        logger.info(f"news_id 없음 - 원문 URL 없음")
                         continue
 
                     if search_news_row(news_id):
@@ -76,6 +75,9 @@ def news_crawling(max_pages: int):
                     # 데이터 파싱 로직 (기존과 동일)
                     title_elem = news_item.find_element(By.CSS_SELECTOR, "div.cont.news-detail strong.title")
                     title = title_elem.text.strip()
+                    if title == "클로징":
+                        logger.info(f'title = 클로징 기사 스킵')
+                        continue
                     tag = "속보" if title.startswith("[속보]") else "일반"
                     if tag == "속보": title = title[4:].strip()
 
@@ -85,6 +87,7 @@ def news_crawling(max_pages: int):
                     category_elem = news_item.find_element(By.CSS_SELECTOR, "div.info span.bullet-keyword")
                     category_text = category_elem.text.strip()
                     if category_text == '미분류' or '날씨' in category_text:
+                        logger.info(f"category 날씨 스킵")
                         continue
 
                     category = category_text.split('>')[0].strip()
@@ -119,7 +122,7 @@ def news_crawling(max_pages: int):
 
                     # 토큰화 및 저장
                     token = tokens({"title": title, "content": content}, kiwi)
-                    timestamp = datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace("+00:00", "Z")
+                    timestamp = datetime.now().astimezone().isoformat(timespec='seconds')
                     logger.info(timestamp)
 
                     news_data = {
@@ -176,60 +179,7 @@ def news_crawling(max_pages: int):
 
 
 
-def news_aggr():
-    processed_ids = set()
-    query = {
-        "_source": ["news_id"],
-        "size" : 10000,
-        "query": {
-            "range": {
-                "timestamp": {
-                    "gte": "now-1h",  # 현재 시간 기준 6시간 전부터
-                    "lte": "now"
-                }
-            }
-        }
-    }
-    try :
-        res = es.search(index="news_aggr", body=query)
-        for hit in res["hits"]["hits"]:
-            processed_ids.add(hit["_source"].get("news_id"))
-        logger.info(f"최근 1시간 내 aggr 처리된 기사 수 : {len(processed_ids)}")
 
-        raw_query = {
-            "_source": ["news_id", "title_tokens", "content_tokens"],
-            "size" : 10000,
-            "query": {
-                "range" :{
-                    "timestamp" : {
-                        "gte": "now-1h", "lte": "now"
-                    }
-                }
-            }
-        }
-        raw_res = es.search(index="news_raw", body=raw_query)
-        final_list = []
-        for hit in raw_res["hits"]["hits"]:
-            source = hit["_source"]
-            news_id = source.get("news_id")
-            if news_id not in processed_ids:
-                # 여기서 필요한 모든 정보를 한 번에 담습니다.
-                title = str(source.get("title", ""))
-                content = str(source.get("content", ""))
-                final_list.append({
-                    "news_id": news_id,
-                    "token": f"{title} {content}",
-                    "tag": "속보" if "[속보]" in title else "일반"
-                })
-        if not final_list:
-            return {"status": "no data"}
-
-
-    except Exception as e:
-        logger.error(e)
-    return None
-################### 5분 동안 크롤링된 뉴스 전체 -> news_raw의 title + content를 꺼냄->
-# tokenizer(불용어 사전) -> TF-IDF -> news_aggr index에 따로 저장
 
 
 def get_news_raw(q: Optional[str] = None):
@@ -240,7 +190,7 @@ def get_news_raw(q: Optional[str] = None):
         "query": {
             "match_all": {}
         },
-        "size": 100,
+        "size": 10000,
     }
     # body = {
     #     "query": {
