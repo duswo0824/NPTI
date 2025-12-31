@@ -14,7 +14,7 @@ from logger import Logger
 from elasticsearch_index.es_raw import (
     ensure_news_raw, index_sample_row, search_news_row, tokens
 )
-from elasticsearch_index.es_err_bigkinds import index_error_log
+from elasticsearch_index.es_err_crawling import index_error_log
 
 
 logger = Logger().get_logger(__name__)
@@ -147,7 +147,7 @@ def news_crawling(max_pages: int):
                     error_msg = f'{page}페이지 {i + 1}번째 에러: {e}'
                     logger.error(error_msg)
                     # 2. Elasticsearch에 에러 로그 저장
-                    index_error_log(error_msg)
+                    index_error_log(error_msg, "bigkinds")
                     continue
 
             total_samples.extend(sample)
@@ -163,14 +163,14 @@ def news_crawling(max_pages: int):
                 except Exception as e:
                     error_msg = f'페이지 이동 실패: {e}'
                     logger.error(error_msg)
-                    index_error_log(error_msg)
+                    index_error_log(error_msg, "bigkinds")
                     break
             else:
                 break
     except Exception as e:
         error_msg = f"크롤링 함수 오류: {e}"
         logger.error(error_msg)
-        index_error_log(error_msg)
+        index_error_log(error_msg, "bigkinds")
 
     finally:
         driver.quit()
