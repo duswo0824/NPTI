@@ -14,6 +14,8 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 from elasticsearch import Elasticsearch
+
+from elasticsearch_index.es_err_crawling import index_error_log
 from logger import Logger
 from datetime import datetime, timezone, timedelta
 from contextlib import asynccontextmanager
@@ -21,6 +23,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.executors.pool import ThreadPoolExecutor
 from kiwipiepy import Kiwi
 from elasticsearch_index.es_raw import tokens, ensure_news_raw, ES_INDEX
+import asyncio
 
 
 @asynccontextmanager
@@ -83,8 +86,10 @@ def get_safe_driver():
         })
         return driver
     except Exception as e:
-        logger.error(f"Selenium 드라이버 초기화 실패:{e}")
+        error_msg = f"Selenium 드라이버 초기화 실패:{e}"
+        logger.error(error_msg)
         logger.error(traceback.format_exc())
+        index_error_log(error_msg, "NAVER")
         return None
 
 
@@ -96,7 +101,9 @@ def id_dupl(news_id):
             return True  # 안전을 위해 중복으로 간주하여 저장 시도 방지
         return es.exists(index=ES_INDEX, id=news_id)
     except Exception as e:
-        logger.error(f"ES PK 중복 확인 중 에러 발생 (ID: {news_id}): {e}")
+        error_msg = f"ES PK 중복 확인 중 에러 발생 (ID: {news_id}): {e}"
+        logger.error(error_msg)
+        index_error_log(error_msg, "NAVER")
         return False
 
 
@@ -191,7 +198,9 @@ def get_article_detail(url, category_name):
             "category": category
         }
     except Exception as e:
-        logger.error(f"기사 상세 수집 실패 ({url}): {e}")
+        error_msg =f"일반기사 상세 수집 실패 ({url}): {e}"
+        logger.error(error_msg)
+        index_error_log(error_msg, "NAVER")
         return None
 
 
@@ -277,8 +286,97 @@ def get_sports_article_detail(url, category_name):
             "category": "스포츠"
         }
     except Exception as e:
-        logger.error(f"스포츠 기사 상세 수집 실패 ({url}): {e}")
+        error_msg =f"스포츠 기사 상세 수집 실패 ({url}): {e}"
+        logger.error(error_msg)
+        index_error_log(error_msg, "NAVER")
         return None
+
+################################################################################################################
+def pubtime_update(news_id):
+    try:
+        res = es.get(index=ES_INDEX, id=news_id)
+        if res.get('found'):
+            source = res.get('_source', {})
+            # pubtime이 없거나(None), 빈 문자열("")인 경우 True 반환 (업데이트 필요)
+            if not source.get('pubtime'):
+                return "UPDATE_NEEDED"
+            return "ALREADY_EXISTS"
+        return "NEW_DOC"
+    except Exception as e:
+        error_msg =f"B->N pubtime_update 중 에러:{e}"
+        logger.error(error_msg)
+        index_error_log(error_msg, "NAVER")
+        # 문서가 없으면 NotFoundError가 발생하므로 새 문서로 간주
+        return "NEW_DOC"
+
+################################################################################################################
+# Semaphore(접속 수 제한:3)
+sem = asyncio.Semaphore(3)
+
+async def process_article(item, cat_name, kiwi):
+    async with sem:
+        try:
+            link_tag = item.select_one("a")
+            title_tag = item.select_one("strong")
+
+            if not title_tag: return
+            title = title_tag.get_text(strip=True)
+
+            if not link_tag: return
+            naver_url = link_tag.get("href")
+            if naver_url.startswith("/"): naver_url = f"https://news.naver.com{naver_url}"
+
+            # 상세 페이지 접근
+            detail = await asyncio.to_thread(get_article_detail, naver_url, cat_name)
+
+            if not detail or not detail.get("URL"): return
+
+            # PK(news_id) 생성 및 중복 확인
+            news_id = hashlib.sha256(detail["URL"].encode()).hexdigest()
+            # id_dupl도 ES 조회(네트워크)이므로 스레드에서 실행
+            status = await asyncio.to_thread(pubtime_update, news_id)
+
+            if status == "ALREADY_EXISTS":
+                return
+
+            content = detail.get("content")
+            if not content: return
+
+            token = tokens({"title": title, "content": content}, kiwi)
+
+            doc = {
+                "news_id": news_id,
+                "tag": "breaking" if "[속보]" in title else "normal",
+                "title": title.replace("[속보]", "").replace('\\', '').strip(),
+                "title_tokens": token["title_tokens"],
+                "content": content,
+                "content_tokens": token["content_tokens"],
+                "link": detail.get("URL"),
+                "media": detail.get("media", "").replace('\\', ''),
+                "pubdate": detail.get("pubdate"),
+                "pubtime": detail.get("pubtime"),
+                "category": detail.get("category"),
+                "writer": detail.get("writer", "").replace('\\', ''),
+                "img": detail.get("imgURL"),
+                "imgCap": detail.get("imgCap"),
+                "timestamp": datetime.now(timezone(timedelta(hours=9))).isoformat(timespec='seconds')
+            }
+
+            # 엘라스틱서치 저장
+            await asyncio.to_thread(es.index, index=ES_INDEX, id=news_id, document=doc)
+
+            # status가 "NEW_DOC"(신규)이거나 "UPDATE_NEEDED"(pubtime 보완)인 경우 진행
+            if status == "UPDATE_NEEDED":
+                logger.info(f"Big->Naver(pubtime 보완): {title[:15]}")
+            # 너무 빠르지 않게 미세한 대기
+            await asyncio.sleep(random.uniform(0.3, 0.7))
+            return True
+
+        except Exception as e:
+            error_msg =f"비동기 기사 처리 중 에러: {e}"
+            logger.error(error_msg)
+            index_error_log(error_msg, "NAVER")
+            return False
 
 ################################################################################################################
 # 전체 크롤링 함수
@@ -290,7 +388,9 @@ def crawler_naver():
     try:
         ensure_news_raw()
     except Exception as e:
-        logger.error(f"ES 인덱스 초기화 실패 (ensure_news_raw): {e}")
+        error_msg =f"ES 인덱스 초기화 실패 (ensure_news_raw): {e}"
+        logger.error(error_msg)
+        index_error_log(error_msg, "NAVER")
         return
 
     driver = get_safe_driver()
@@ -301,12 +401,14 @@ def crawler_naver():
         # 일반 기사 크롤링
         crawling_general_news(driver)
         # 스포츠 기사 크롤링
-        crawling_sports_news(driver)
+        #crawling_sports_news(driver)
         # 연예 기사 크롤링
         crawling_enter_news(driver)
     except Exception as e:
-        logger.error(f"메인 크롤링 루프 에러: {e}")
         logger.error(traceback.format_exc())
+        error_msg =f"메인 크롤링 루프 에러: {e}"
+        logger.error(error_msg)
+        index_error_log(error_msg, "NAVER")
     finally:
         if driver:
             driver.quit()
@@ -354,77 +456,22 @@ def crawling_general_news(driver):
             soup = BeautifulSoup(driver.page_source, "lxml")
             items = soup.select("div.section_latest ul li")
 
-            saved_count = 0  # 카테고리별 저장 기사 수 카운터
-            duplicate_count = 0
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
 
-            for item in items:
-                link_tag = item.select_one("a")
-                title_tag = item.select_one("strong")
-
-                if not title_tag: continue
-                title = title_tag.get_text(strip=True)
-
-                if not link_tag: continue
-                naver_url = link_tag.get("href")
-                if naver_url.startswith("/"): naver_url = f"https://news.naver.com{naver_url}"
-
-                # 상세 페이지 접근
-                # logger.info(f"상세 페이지 접근 시도: {naver_url}")
-                detail = get_article_detail(naver_url, cat_name)
-                if not detail or not detail.get("URL"): continue
-                # logger.info(f"상세 페이지 수집 완료")
-
-                # PK(news_id) 생성
-                news_id = hashlib.sha256(detail["URL"].encode()).hexdigest()
-                if id_dupl(news_id):
-                    duplicate_count += 1
-                    logger.info(f"중복 발견 ({duplicate_count}/5): {title[:15]}")
-                    if duplicate_count >= 5:
-                        logger.info(f"[{cat_name}] 수집 종료(id_dupl)")
-                        break
-                    continue
-
-                duplicate_count = 0
-
-                content = detail.get("content")
-                media = detail.get("media")
-                writer = detail.get("writer")
-                URL = detail.get("URL")
-
-                if not content or not media or not writer or not URL:
-                    logger.warning(f"[SKIP] 필수 정보 누락(본문/언론사/기자/URL: {naver_url}")
-                    continue
-
-                token = tokens({"title": title, "content": content}, kiwi)
-
-                # --- 엘라스틱서치 저장 ---
-                doc = {
-                    "news_id": news_id,
-                    "tag": "breaking" if "[속보]" in title else "normal",
-                    "title": title.replace("[속보]", "").replace('\\', '').strip(),
-                    "title_tokens": token["title_tokens"],
-                    "content": content,
-                    "content_tokens": token["content_tokens"],
-                    "link": URL,
-                    "media": detail.get("media", "").replace('\\', ''),
-                    "pubdate": detail.get("pubdate"),
-                    "pubtime": detail.get("pubtime"),
-                    "category": detail.get("category"),
-                    "writer": detail.get("writer", "").replace('\\', ''),
-                    "img": detail.get("imgURL"),
-                    "imgCap": detail.get("imgCap"),
-                    "timestamp": datetime.now(timezone(timedelta(hours=9))).isoformat(timespec='seconds')
-                }
-                es.index(index=ES_INDEX, id=news_id, document=doc)
-                saved_count += 1
-                time.sleep(random.uniform(0.5, 1.0))
+            tasks = [process_article(item, cat_name, kiwi) for item in items]
+            results = loop.run_until_complete(asyncio.gather(*tasks))
+            loop.close()
 
             end_time = time.time()
             duration = end_time - start_time
+            saved_count = len([r for r in results if r is True])
             logger.info(f"[카테고리 - {cat_name}] 수집: 신규 기사: {saved_count}건 / {duration:.2f}초 소요 ")
 
         except Exception as e:
-            logger.error(f"crawling_general_news - [{cat_name}] 카테고리 수집 중 에러: {e}")
+            error_msg =f"crawling_general_news - [{cat_name}] 카테고리 수집 중 에러: {e}"
+            logger.error(error_msg)
+            index_error_log(error_msg, "NAVER")
             continue
 
         # 다음 카테고리로 넘어가기 전 대기(IP 차단 방지)
@@ -484,10 +531,14 @@ def crawling_sports_news(driver):
                             time.sleep(1.5)
 
                         except Exception as e:
-                            logger.error(f"[{s_name}] {page_num}페이지 버튼 클릭 실패: {e}")
+                            error_msg =f"[{s_name}] {page_num}페이지 버튼 클릭 실패: {e}"
+                            logger.error(error_msg)
+                            index_error_log(error_msg, "NAVER")
                             break  # 다음 페이지 버튼을 못 찾으면 해당 종목 종료
                 except Exception as e:
-                    logger.error(f"[스포츠/{s_name}] {page_num} 이동 중 에러: {e}")
+                    error_msg =f"[스포츠/{s_name}] {page_num} 이동 중 에러: {e}"
+                    logger.error(error_msg)
+                    index_error_log(error_msg, "NAVER")
                     break
 
                 soup = BeautifulSoup(driver.page_source, "lxml")
@@ -567,7 +618,9 @@ def crawling_sports_news(driver):
             time.sleep(random.uniform(0.8, 1.5))
 
         except Exception as e:
-            logger.error(f"crawling_sports_news - 스포츠/{s_name} 수집 중 에러: {e}")
+            error_msg =f"crawling_sports_news - 스포츠/{s_name} 수집 중 에러: {e}"
+            logger.error(error_msg)
+            index_error_log(error_msg, "NAVER")
             continue
 
     logger.info("스포츠 기사 수집 프로세스 종료")
@@ -616,7 +669,9 @@ def crawling_enter_news(driver):
                         time.sleep(1.5)
 
                     except Exception as e:
-                        logger.error(f"[연예] {page_num}페이지 버튼 찾기 실패: {e}")
+                        error_msg =f"[연예] {page_num}페이지 버튼 찾기 실패: {e}"
+                        logger.error(error_msg)
+                        index_error_log(error_msg, "NAVER")
                         break
 
                 soup = BeautifulSoup(driver.page_source, "lxml")
@@ -698,14 +753,18 @@ def crawling_enter_news(driver):
                 logger.info(f"[연예] {page_num}페이지 완료 (누적 {saved_count}건)")
 
             except Exception as e:
-                logger.error(f"[연예] {page_num}페이지 수집 중 에러: {e}")
+                error_msg =f"[연예] {page_num}페이지 수집 중 에러: {e}"
+                logger.error(error_msg)
+                index_error_log(error_msg, "NAVER")
                 continue
 
         duration = time.time() - start_time
         logger.info(f"[연예 뉴스] 전체 완료 : {saved_count}건 / {duration:.2f}초 소요")
 
     except Exception as e:
-        logger.error(f"crawling_enter_news - 수집 중 에러: {e}")
+        error_msg =f"crawling_enter_news - 수집 중 에러: {e}"
+        logger.error(error_msg)
+        index_error_log(error_msg, "NAVER")
 
     logger.info("연예 기사 수집 프로세스 종료")
 
@@ -716,7 +775,9 @@ def scheduled_task():
     try:
         crawler_naver()
     except Exception as e:
-        logger.critical(f"NAVER 스케줄러 예외 발생: {e}")
+        error_msg =f"NAVER 스케줄러 예외 발생: {e}"
+        logger.error(error_msg)
+        index_error_log(error_msg, "NAVER")
 
 
 
