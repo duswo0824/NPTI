@@ -91,9 +91,11 @@ document.addEventListener('DOMContentLoaded', function () {
             const inputPw = pwInput.value;
 
             if (inputId === DB_USER.id && inputPw === DB_USER.pw) {
-                // 성공 시
+                // 성공 시 브라우저에 로그인 상태 저장
+                localStorage.setItem('isLoggedIn', 'true');
+
                 showAlert(`${inputId}님 환영합니다!`, function () {
-                    window.location.href = '/main/main.html';
+                    window.location.href = '/html/main.html';
                 });
             } else {
                 // [실패 시] 파란 글씨 에러 메시지 표시

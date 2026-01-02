@@ -1,6 +1,3 @@
-<!-- 아직 안된 부분 -->
-<!-- npti 설명 / 마이페이지 -->
-
 <!DOCTYPE html>
 <html lang="ko">
 
@@ -11,6 +8,7 @@
     <link rel="stylesheet" as="style" crossorigin
         href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/css/main.css">
     <link rel="stylesheet" href="/css/search.css">
 </head>
 
@@ -31,7 +29,7 @@
                 <p>News Personality Type Indicator</p>
             </div>
             <div class="header-right">
-                <a href="/html/login.html" class="login-link">로그인/회원가입</a>
+                <a href="/html/login.html" class="login-link" id="authLink">로그인/회원가입</a>
                 <div class="icons">
                     <button class="icon-btn search" onclick="location.href='/html/search.html'">
                         <i class="fa-solid fa-magnifying-glass"></i></button>
@@ -75,9 +73,22 @@
             <div id="search-results" class="results-container"></div>
             
         </div>
+
+        <div id="logoutModal" class="modal-overlay">
+            <div class="modal-box">
+                <p class="modal-message">정말 로그아웃 하시겠습니까?</p>
+                <div class="modal-btn-group">
+                    <button id="closeLogout" class="btn-cancel">취소</button>
+                    <button id="confirmLogout" class="btn-confirm">확인</button>
+                </div>
+            </div>
+        </div>
+        
     </main>
 
+    <script src="/js/main.js"></script>
     <script src="/js/search.js"></script>
+    <script src="/js/about.js"></script>
 </body>
 
 </html>
