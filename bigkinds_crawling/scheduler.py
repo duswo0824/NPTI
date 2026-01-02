@@ -3,8 +3,10 @@ from bigkinds_crawling.news_raw import news_crawling
 from bigkinds_crawling.news_aggr_grouping import news_aggr
 import multiprocessing
 import psutil
-import time
+from logger import Logger
+from datetime import datetime, timezone, timedelta
 
+logger = Logger()
 
 
 # 1. 하나의 통합된 실행 제어 함수
@@ -17,6 +19,7 @@ def run_job_with_timeout(func, args, timeout):
     # 별도 프로세스로 작업 시작
     p = multiprocessing.Process(target=func, args=args)
     p.start()
+    print(f"{func} 함수 시작")
 
     # 프로세스가 끝날 때까지 지정된 시간(timeout)만큼 대기
     p.join(timeout)
@@ -65,16 +68,18 @@ def sch_start():
         'interval',
         minutes=5,
         id='news_crawling',
-        args=[news_crawling, (10,), 280]  # 함수명, 인자(튜플), 타임아웃(초)
+        args=[news_crawling, (10,), 280],
+        next_run_time=(datetime.now(timezone(timedelta(hours=9)))+timedelta(seconds=5)).isoformat(timespec='seconds') # 함수명, 인자(튜플), 타임아웃(초)
     )
 
     # 2-2. 뉴스 집계 등록
-    # sch.add_job(
-    #     run_job_with_timeout,
-    #     'interval',
-    #     minutes=5,
-    #     id='news_aggr',
-    #     args=[news_aggr, ('news_aggr',), 280]
-    # )
+    sch.add_job(
+        run_job_with_timeout,
+        'interval',
+        minutes=5,
+        id='news_aggr',
+        args=[news_aggr, (), 290],
+        next_run_time=(datetime.now(timezone(timedelta(hours=9)))+timedelta(seconds=5)).isoformat(timespec='seconds')
+    )
 
     return sch
