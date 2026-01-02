@@ -1,29 +1,16 @@
-import hashlib
-import pandas as pd
 from fastapi import FastAPI, Depends, HTTPException, Query
-from selenium.webdriver.chromium.options import ChromiumOptions
-from selenium.webdriver.chrome.service import Service
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.wait import WebDriverWait
-from selenium.webdriver.support import expected_conditions as ec
 from bigkinds_crawling.scheduler import sch_start
-
 from bigkinds_crawling.sample import sample_crawling, get_sample
 from logger import Logger
-import time
 from typing import Optional
-from elasticsearch_index.es_raw import ensure_news_raw, index_sample_row, search_news_row, tokens
-from elasticsearch_index.es_raw import es, ES_INDEX
-from kiwipiepy import Kiwi
-from bigkinds_crawling.news_raw import news_crawling, get_news_raw, news_aggr
-
+from bigkinds_crawling.news_raw import news_crawling, get_news_raw
+from bigkinds_crawling.news_aggr_grouping import news_aggr
 from sqlalchemy.orm import Session
 from database import get_db
-from db_npti_type import get_all_npti_type, get_npti_type_by_group, npti_type_response
-from db_npti_code import get_all_npti_codes, get_npti_code_by_code, npti_code_response
-from db_npti_question import get_all_npti_questions, get_npti_questions_by_axis, npti_question_response
-from db_user_info import UserCreateRequest, insert_user
+from db_index.db_npti_type import get_all_npti_type, get_npti_type_by_group, npti_type_response
+from db_index.db_npti_code import get_all_npti_codes, get_npti_code_by_code, npti_code_response
+from db_index.db_npti_question import get_all_npti_questions, get_npti_questions_by_axis, npti_question_response
+from db_index.db_user_info import UserCreateRequest, insert_user
 
 app = FastAPI()
 logger = Logger().get_logger(__name__)
