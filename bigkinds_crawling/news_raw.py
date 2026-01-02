@@ -16,6 +16,8 @@ from elasticsearch_index.es_raw import (
     ensure_news_raw, index_sample_row, search_news_row, tokens
 )
 from elasticsearch_index.es_err_crawling import index_error_log
+from sklearn.feature_extraction.text import TfidfVectorizer
+from elasticsearch import helpers
 
 logger = Logger().get_logger(__name__)
 

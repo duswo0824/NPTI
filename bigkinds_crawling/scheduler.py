@@ -1,4 +1,6 @@
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
+from Naver.naver_crawling import crawling_general_news, crawling_sports_news, crawler_naver
 from bigkinds_crawling.news_raw import news_crawling
 from bigkinds_crawling.news_aggr_grouping import news_aggr
 import multiprocessing
@@ -57,7 +59,11 @@ def run_job_with_timeout(func, args, timeout):
 
 
 def sch_start():
-    sch = AsyncIOScheduler()
+    job_defaults = {
+        'coalesce': True,
+        'max_instances': 1
+    }
+    sch = AsyncIOScheduler(job_defaults=job_defaults)
 
     # 5분(300초) 주기지만, 안전을 위해 280초(4분 40초)에 강제 종료하도록 설정
     # 그래야 5분 정각에 새 스케줄러가 시작될 때 충돌이 없습니다.
@@ -80,6 +86,15 @@ def sch_start():
         id='news_aggr',
         args=[news_aggr, (), 290],
         next_run_time=(datetime.now(timezone(timedelta(hours=9)))+timedelta(seconds=5)).isoformat(timespec='seconds')
+    )
+
+    sch.add_job(
+        run_job_with_timeout,
+        'interval',
+        minutes=10,  # 10분마다 실행
+        id='naver_integrated_task',
+        args=[crawler_naver, (), 550],
+        next_run_time=(datetime.now(timezone(timedelta(hours=9)))+timedelta(seconds=15)).isoformat(timespec='seconds')
     )
 
     return sch
