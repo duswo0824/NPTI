@@ -7,6 +7,7 @@ python-multipart
 pymysql
 sqlalchemy
 elasticsearch
+pydantic[email]
 
 # crawling
 selenium
@@ -21,6 +22,7 @@ psutil
 # 전처리
 pandas
 kiwipiepy
+Korpora
 
 # 머신러닝
 scikit-learn
