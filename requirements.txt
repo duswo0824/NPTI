@@ -10,6 +10,9 @@ elasticsearch
 
 # crawling
 selenium
+beautifulsoup4
+requests
+webdriver_manager
 
 # scheduler
 apscheduler
