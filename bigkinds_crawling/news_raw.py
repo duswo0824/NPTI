@@ -15,9 +15,7 @@ from logger import Logger
 from elasticsearch_index.es_raw import (
     ensure_news_raw, index_sample_row, search_news_row, tokens
 )
-from elasticsearch_index.es_err_bigkinds import index_error_log
-from sklearn.feature_extraction.text import TfidfVectorizer
-from elasticsearch import helpers
+from elasticsearch_index.es_err_crawling import index_error_log
 
 logger = Logger().get_logger(__name__)
 
@@ -68,6 +66,7 @@ def news_crawling(max_pages: int):
                         link = link_elem[0].get_attribute("href")
                         news_id = hashlib.sha256(link.split('//', 1)[1].encode()).hexdigest()
                     else:
+                        logger.info(f"원문 링크(news_id)없음 - 스킵")
                         continue
 
                     if search_news_row(news_id):
@@ -85,6 +84,7 @@ def news_crawling(max_pages: int):
                     category_elem = news_item.find_element(By.CSS_SELECTOR, "div.info span.bullet-keyword")
                     category_text = category_elem.text.strip()
                     if category_text == '미분류' or '날씨' in category_text:
+                        logger.info(f"{category_text} - 스킵")
                         continue
 
                     category = category_text.split('>')[0].strip()
@@ -120,7 +120,6 @@ def news_crawling(max_pages: int):
                     # 토큰화 및 저장
                     token = tokens({"title": title, "content": content}, kiwi)
                     timestamp = datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace("+00:00", "Z")
-                    logger.info(timestamp)
 
                     news_data = {
                         "title_tokens": token["title_tokens"],
@@ -183,7 +182,7 @@ def get_news_raw(q: Optional[str] = None):
         "query": {
             "match_all": {}
         },
-        "size": 100,
+        "size": 10000,
     }
     # body = {
     #     "query": {
