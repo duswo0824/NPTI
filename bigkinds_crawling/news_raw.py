@@ -175,63 +175,6 @@ def news_crawling(max_pages: int):
     return total_samples
 
 
-
-def news_aggr():
-    processed_ids = set()
-    query = {
-        "_source": ["news_id"],
-        "size" : 10000,
-        "query": {
-            "range": {
-                "timestamp": {
-                    "gte": "now-1h",  # 현재 시간 기준 6시간 전부터
-                    "lte": "now"
-                }
-            }
-        }
-    }
-    try :
-        res = es.search(index="news_aggr", body=query)
-        for hit in res["hits"]["hits"]:
-            processed_ids.add(hit["_source"].get("news_id"))
-        logger.info(f"최근 1시간 내 aggr 처리된 기사 수 : {len(processed_ids)}")
-
-        raw_query = {
-            "_source": ["news_id", "title_tokens", "content_tokens"],
-            "size" : 10000,
-            "query": {
-                "range" :{
-                    "timestamp" : {
-                        "gte": "now-1h", "lte": "now"
-                    }
-                }
-            }
-        }
-        raw_res = es.search(index="news_raw", body=raw_query)
-        final_list = []
-        for hit in raw_res["hits"]["hits"]:
-            source = hit["_source"]
-            news_id = source.get("news_id")
-            if news_id not in processed_ids:
-                # 여기서 필요한 모든 정보를 한 번에 담습니다.
-                title = str(source.get("title", ""))
-                content = str(source.get("content", ""))
-                final_list.append({
-                    "news_id": news_id,
-                    "token": f"{title} {content}",
-                    "tag": "속보" if "[속보]" in title else "일반"
-                })
-        if not final_list:
-            return {"status": "no data"}
-
-
-    except Exception as e:
-        logger.error(e)
-    return None
-################### 5분 동안 크롤링된 뉴스 전체 -> news_raw의 title + content를 꺼냄->
-# tokenizer(불용어 사전) -> TF-IDF -> news_aggr index에 따로 저장
-
-
 def get_news_raw(q: Optional[str] = None):
 
     keyword = (q or "").strip()
