@@ -305,7 +305,7 @@ const pairs = [
     ['P', 'N']  // index 3
 ];
 
-// 현재 사용자의 선택 상태 (초기값: L, C, I, P)
+// 현재 사용자의 반대 선택 상태 (초기값: L, C, I, P)
 let currentSelection = ['L', 'C', 'I', 'P']; 
 
 
@@ -347,13 +347,13 @@ function toggleSlot(index) {
     updateDisplay(index, nextVal);
 }
 
-
 // --- [기능 2] 화면 업데이트 함수 ---
 function updateDisplay(index, code) {
     const data = typeDB[code]; // DB에서 정보 가져오기
     
     const badgeEl = document.getElementById(`badge-${index}`);
     const descEl = document.getElementById(`desc-${index}`);
+    const bottomTagsContainer = document.querySelector('.section-lcin .tags');
 
     // 1. 뱃지 디자인 변경
     badgeEl.innerText = code;
@@ -370,6 +370,17 @@ function updateDisplay(index, code) {
         : `<strong class="blue">${code}</strong>`;
         
     descEl.innerHTML = `${colorHtml} - ${data.text}`;
+
+    // 3. tags 컨테이너 배경색 변경 로직
+    if (bottomTagsContainer) {
+        if (data.color === 'orange') {
+            // 주황색 계열일 때 연한 주황 배경 강제 적용
+            bottomTagsContainer.style.setProperty('background-color', '#FFF2EB', 'important');
+        } else {
+            // 파란색 계열일 때 연한 파랑 배경 강제 적용
+            bottomTagsContainer.style.setProperty('background-color', '#e0eaff', 'important');
+        }
+    }
 }
 
 
@@ -384,26 +395,215 @@ function confirmCombination() {
     console.log("선택된 유형:", finalType); 
 }
 
-// HTML이 완전히 로딩된 후에 실행하도록 감싸줌 블러처리 해제
-document.addEventListener('DOMContentLoaded', function () {
-
-    // 1. 테스트용 변수 설정
-    let isLoggedIn = false;
-    let isDiagnosed = false;
-
-    // 2. 요소 찾기
+// --- [기능4] HTML이 완전히 로딩된 후에 실행하도록 감싸줌 블러처리 해제 ---
+document.addEventListener('DOMContentLoaded', () => {
+    const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
+    const hasNPTI = localStorage.getItem('hasNPTI') === 'true'; // 저장된 상태 가져오기
     const blurSection = document.querySelector('.blur-wrapper');
+    const bannerOverlay = document.querySelector('.banner-overlay');
 
-    // (혹시 요소를 못 찾았으면 에러 방지를 위해 중단)
-    if (!blurSection) return;
-
-    // 3. 작성하신 테스트 로직 (둘 다 true일 때 해제)
-    if (isLoggedIn === true && isDiagnosed === true) {
-        console.log("테스트 조건 통과! 잠금 해제"); // F12 콘솔에서 확인 가능
-        blurSection.classList.add('unlocked');
-    } else {
-        console.log("조건 불만족. 잠금 유지");
+    // [핵심] 가상으로 진단 완료 시 블러 해제 처리
+    if (isLoggedIn && hasNPTI && blurSection) {
+        blurSection.classList.add('unlocked'); // CSS에서 filter: none 처리된 클래스
+        if (bannerOverlay) bannerOverlay.style.display = 'none'; // 배너 숨김
+        console.log("진단 완료 확인: 블러가 해제되었습니다.");
     }
 
+    // NPTI 설명 팝업 로직 (에러 방지 적용)
+    const aboutBtn = document.querySelector('.search-bubble');
+    aboutBtn?.addEventListener('click', (e) => {
+        e.preventDefault();
+        // window.renderNPTI가 정의되어 있는지 확인 후 실행하여 에러 방지
+        if (typeof window.renderNPTI === 'function') {
+            window.renderNPTI('#aboutModalContent');
+            document.getElementById('aboutModal').style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+        }
+    });
 });
 
+// 모든 페이지에서 공통으로 실행되는 로그인 상태 업데이트 함수
+document.addEventListener('DOMContentLoaded', () => {
+    const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
+    const hasNPTI = localStorage.getItem('hasNPTI') === 'true';
+
+    // 1. 모달 제어 공통 함수 (null 체크 포함)
+    const toggleModal = (id, isShow) => {
+        const modal = document.getElementById(id);
+        if (!modal) return;
+        if (isShow) {
+            modal.style.display = 'flex';
+            setTimeout(() => modal.classList.add('show'), 10);
+        } else {
+            modal.classList.remove('show');
+            setTimeout(() => modal.style.display = 'none', 300);
+        }
+    };
+
+    // 2. 로그인 상태 UI 업데이트
+    const authLink = document.getElementById('authLink');
+    if (isLoggedIn && authLink) {
+        authLink.innerText = "로그아웃";
+        authLink.onclick = (e) => { e.preventDefault(); toggleModal('logoutModal', true); };
+    }
+
+    // 3. 페이지 접근 제어 (보호된 링크)
+    document.querySelectorAll('a[href*="curation.html"], a[href*="mypage.html"], a[href*="test.html"], .icon-btn.user').forEach(link => {
+        link.removeAttribute('onclick'); // 기존 HTML의 inline onclick 제거
+
+        link.addEventListener('click', (e) => {
+            const targetHref = link.getAttribute('href') || "";
+
+            if (!isLoggedIn) {
+                e.preventDefault();
+                // [수정] 마이페이지 또는 유저 아이콘 클릭 시 팝업 없이 바로 로그인 이동
+                if (targetHref.includes('mypage.html') || link.classList.contains('user')) {
+                    location.href = '/html/login.html';
+                } else {
+                    // 그 외(테스트 등)는 기존처럼 로그인 유도 팝업 노출
+                    toggleModal('loginGuardModal', true);
+                }
+            }
+            else if (targetHref.includes('curation.html') && !hasNPTI) {
+                e.preventDefault();
+                toggleModal('hasNPTIGuardModal', true);
+            }
+            else if (link.classList.contains('user')) {
+                // 로그인 상태에서 유저 아이콘 클릭 시 마이페이지 이동
+                e.preventDefault();
+                location.href = '/html/mypage.html';
+            }
+        });
+    });
+
+    // 4. 버튼 이벤트 바인딩 (헬퍼 함수로 간결화)
+    const btnMap = {
+        'closeLoginGuard': () => toggleModal('loginGuardModal', false),
+        'goToLogin': () => location.href = "/html/login.html",
+        'closeNPTIGuard': () => toggleModal('hasNPTIGuardModal', false),
+        'goToTest': () => location.href = "/html/test.html",
+        'closeLogout': () => toggleModal('logoutModal', false),
+        'confirmLogout': () => { localStorage.clear(); location.replace("/html/main.html"); }
+    };
+
+    Object.keys(btnMap).forEach(id => {
+        document.getElementById(id)?.addEventListener('click', btnMap[id]);
+    });
+});
+
+/* npti 설명 팝업 공통 설정 */
+document.addEventListener('DOMContentLoaded', () => {
+    // 1. 모든 페이지에 공통 모달 구조 자동 주입
+    if (!document.getElementById('aboutModal')) {
+        const modalHtml = `
+            <div id="aboutModal" class="modal">
+                <div class="modal-content">
+                    <span class="close-btn">&times;</span>
+                    <div id="aboutRoot" class="modal-inner"></div>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+    }
+
+    // 2. CSS 자동 연결 (about.css가 없는 페이지 대비)
+    if (!document.querySelector('link[href*="about.css"]')) {
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = '/css/about.css';
+        document.head.appendChild(link);
+    }
+
+    const modal = document.getElementById('aboutModal');
+
+    // 3. 통합 클릭 이벤트 관리
+    document.addEventListener('click', (e) => {
+        // 모달 열기: .search-bubble 클래스나 #aboutTrigger 아이디를 가진 요소를 클릭했을 때
+        const trigger = e.target.closest('.search-bubble') || e.target.closest('#aboutTrigger');
+
+        if (trigger) {
+            e.preventDefault(); // 링크 이동 방지
+            const root = document.querySelector('#aboutModal #aboutRoot');
+
+            // 처음 열 때만 렌더링 (중복 방지)
+            if (root && root.innerHTML === "" && typeof renderNPTI === 'function') {
+                renderNPTI(root);
+            }
+
+            modal.style.display = "block";
+            document.body.style.overflow = "hidden";
+        }
+
+        // 모달 닫기: X 버튼이나 배경 클릭 시
+        if (e.target.classList.contains('close-btn') || e.target === modal) {
+            modal.style.display = "none";
+            document.body.style.overflow = "auto";
+        }
+    });
+});
+
+
+/* 타이틀 교체 및 수정 */
+document.addEventListener('DOMContentLoaded', () => {
+    // 1. 필요한 데이터 및 상태 미리 정의 (에러 방지)
+    const nptiResult = localStorage.getItem('nptiResult');
+    const hasNPTI = localStorage.getItem('hasNPTI') === 'true';
+    const titleArea = document.querySelector('.title-area');
+
+    if (nptiResult && titleArea) {
+        const nicknames = {
+            'STFN': '팩트 현실주의자', 'LCIP': '심층 분석가',
+            'STFP': '열정적 소식통', 'LCIN': '심층 비평가'
+        };
+
+        const descMap = {
+            'S': '짧은', 'L': '긴', 'T': '이야기형', 'C': '텍스트형',
+            'F': '객관적', 'I': '분석적', 'N': '비판적', 'P': '우호적'
+        };
+
+        const nickname = nicknames[nptiResult] || '나만의 뉴스 탐험가';
+
+        // 2. 타이틀 + 태그 바 + 버튼 통합 주입
+        // 백틱(`)과 ${} 문법의 짝을 정확히 맞췄습니다.
+        titleArea.innerHTML = `
+            <div class="npti-title-wrapper">
+                <div class="npti-main-line">
+                    <span class="npti-code">${nptiResult}</span> 
+                    <span class="npti-nickname">${nickname}</span>
+                </div>
+                <div class="tags">
+                    <div class="tag-text">
+                        ${nptiResult.split('').map(char => `
+                            <span><b class="point">${char}</b> - ${descMap[char] || ''}</span>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+});
+
+/* 말풍선 안 내용 추가 */
+function updateNPTIButton() {
+    const hasNPTI = localStorage.getItem('hasNPTI') === 'true';
+    const nptiBtn = document.querySelector('.nav-row .btn-bubble'); // 정확한 위치의 버튼 선택
+
+    if (!nptiBtn) return;
+
+    if (hasNPTI) {
+        // 1. 진단 완료 상태
+        nptiBtn.innerText = "나의 NPTI 뉴스 더보기";
+        nptiBtn.href = "/html/curation.html";
+
+        // 빨간 화살표처럼 들여쓰기가 필요하다면 클래스 추가
+        nptiBtn.classList.add('npti-done');
+    } else {
+        // 2. 미진단 상태 (기본값)
+        nptiBtn.innerText = "나의 뉴스 성향 알아보기";
+        nptiBtn.href = "/html/test.html";
+        nptiBtn.classList.remove('npti-done');
+    }
+}
+
+// 페이지 로드 시 실행
+document.addEventListener('DOMContentLoaded', updateNPTIButton);
