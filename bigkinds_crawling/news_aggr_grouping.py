@@ -1,26 +1,12 @@
-import hashlib
-import pandas as pd
-import time
-from selenium import webdriver
-from selenium.webdriver.chromium.options import ChromiumOptions
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.wait import WebDriverWait
-from selenium.webdriver.support import expected_conditions as ec
 from kiwipiepy import Kiwi
-from typing import Optional
 from matplotlib import pyplot as plt
 from sklearn.metrics.pairwise import cosine_similarity as cosine
 import math
 import numpy as np
 from elasticsearch_index.es_aggr import tokens_aggr
-from elasticsearch_index.es_raw import es, ES_INDEX
-from datetime import datetime, timezone
+from elasticsearch_index.es_raw import es
+from datetime import datetime
 from logger import Logger
-from elasticsearch_index.es_raw import (
-    ensure_news_raw, index_sample_row, search_news_row, tokens
-)
-from elasticsearch_index.es_err_crawling import index_error_log
 from sklearn.feature_extraction.text import TfidfVectorizer
 from elasticsearch import helpers
 
@@ -32,81 +18,156 @@ kiwi = Kiwi()
 def news_aggr():
     processed_ids = set()
     try:
-        # 1. 처리된 기사 확인
-        query = {"_source": ["news_id"], "size": 10000,
-                 "query": {"range": {"timestamp": {"gte": "2025-12-31T00:00:00+09:00", "lte": "now"}}}}
+        # 1. 처리된 기사 ID 확인
+        query = {
+            "_source": ["news_id"],
+            "size": 10000,
+            "query": {"range": {"timestamp": {"gte": "now-1h", "lte": "now"}}}
+        }
         es.indices.refresh(index="news_aggr")
         res = es.search(index="news_aggr", body=query)
-        for hit in res["hits"]["hits"]: processed_ids.add(hit["_source"].get("news_id"))
+        for hit in res["hits"]["hits"]:
+            processed_ids.add(hit["_source"].get("news_id"))
 
         # 2. Raw 기사 가져오기
-        raw_query = {"_source": ["news_id", "title", "content", "tag"], "size": 10000,
-                     "query": {"range": {"timestamp": {"gte": "2025-12-31T00:00:00+09:00", "lte": "now"}}}}
+        raw_query = {
+            "_source": ["news_id", "title", "content", "tag"],
+            "size": 10000,
+            "query": {"range": {"timestamp": {"gte": "now-1h", "lte": "now"}}}
+        }
         raw_res = es.search(index="news_raw", body=raw_query)
 
+        # 리스트 초기화
         breaking_list = []
         norm_list = []
+        target_breaking_ids_list = []
+        remove_breaking_list = []  # [New] 그룹핑에서 제외할 기사 ID 목록
 
-        # [수정 1] 변수 미리 초기화 (UnboundLocalError 방지)
-        breaking_tfidf = None
-        breaking_actions = []
-        norm_actions = []
-
+        # ------------------------------------------------------------------
+        # [A] 새로운 기사 분류 및 토큰화
+        # ------------------------------------------------------------------
         for hit in raw_res["hits"]["hits"]:
             source = hit["_source"]
             news_id = source.get("news_id")
+
             if news_id not in processed_ids:
+                tag = str(source.get("tag", ""))
                 title_token = str(source.get("title", ""))
                 content_token = str(source.get("content", ""))
-                tag = str(source.get("tag", ""))
-                title_content = title_token + " " + content_token
-                token_result = tokens_aggr(title_content, kiwi)
+                weighted_token = (title_token + " ") * 3 + content_token
 
-                # 아이템 딕셔너리 구성
+                # 형태소 분석 (숫자 포함 필수)
+                token_result = tokens_aggr(weighted_token, kiwi)
+
                 item_data = {"news_id": news_id, "token": token_result, "tag": tag}
 
                 if tag == "속보":
-                    breaking_list.append(item_data)
+                    # [조건] 제목이 본문에 포함된 경우 (부실/중복 속보)
+                    if title_token in content_token:
+                        # 1. 분석/저장 대상에는 포함 (breaking_list)
+                        breaking_list.append(item_data)
+                        target_breaking_ids_list.append(news_id)
+                        # 2. 삭제 대상 목록에 등록 (나중에 그룹핑에서 뺄 것임)
+                        remove_breaking_list.append(news_id)
+                        logger.info(f"그룹핑 제외 대상 등록: {news_id}")
+
+                    # [조건] 정상 속보
+                    else:
+                        breaking_list.append(item_data)
+                        target_breaking_ids_list.append(news_id)
+
                 elif tag == "일반":
                     norm_list.append(item_data)
 
-        final_list = breaking_list + norm_list
-        logger.info(f"토큰된 기사 : {len(final_list)}개")
+        logger.info(f"새로 수집: 속보 {len(breaking_list)}건 (제외대상 {len(remove_breaking_list)}건 포함), 일반 {len(norm_list)}건")
 
-        if not final_list:
-            return {"status": "no data"}
+        # ------------------------------------------------------------------
+        # [B] 분석 대상(Target) 선정 로직 (Fallback 구현)
+        # ------------------------------------------------------------------
+        target_breaking_list = []
+        is_fallback_mode = False
 
-        # 3. 속보 TF-IDF
         if breaking_list:
-            breaking_corpus = [item['token'] for item in breaking_list]
-            breaking_vectorizer = TfidfVectorizer(ngram_range=(1, 2))
+            target_breaking_list = breaking_list
+            logger.info(">>> [모드] 신규 속보 데이터 분석")
+
+        else:
+            logger.info(">>> [모드] 신규 속보 없음 -> 기존 news_aggr 데이터 조회 (Fallback)")
+            is_fallback_mode = True
+
+            fallback_query = {
+                "size": 10000,
+                "_source": ["news_id", "tokens", "tag"],
+                "query": {
+                    "bool": {
+                        "must": [
+                            {"range": {"timestamp": {"gte": "now-1h", "lte": "now"}}},
+                            {"term": {"tag": "속보"}}
+                        ]
+                    }
+                }
+            }
+            fallback_res = es.search(index="news_aggr", body=fallback_query)
+            target_breaking_ids_list = []
+
+            for hit in fallback_res["hits"]["hits"]:
+                src = hit["_source"]
+                tokens_data = src.get("tokens", [])
+                extracted_terms = [t.get("term", "") for t in tokens_data]
+                reconstructed_token_str = " ".join(extracted_terms)
+
+                if reconstructed_token_str.strip():
+                    target_breaking_list.append({
+                        "news_id": src.get("news_id"),
+                        "token": reconstructed_token_str,
+                        "tag": "속보"
+                    })
+                    target_breaking_ids_list.append(src.get("news_id"))
+
+        # ------------------------------------------------------------------
+        # [C] 속보 TF-IDF 계산 (전체 리스트 대상)
+        # ------------------------------------------------------------------
+        breaking_tfidf = None
+        breaking_actions = []
+
+        if target_breaking_list:
+            breaking_corpus = [item['token'] for item in target_breaking_list]
+
+            # TF-IDF 수행 (여기서는 제외 대상도 포함해서 계산됨)
+            breaking_vectorizer = TfidfVectorizer(ngram_range=(1, 2), sublinear_tf=True, max_features=3000)
             breaking_tfidf = breaking_vectorizer.fit_transform(breaking_corpus)
             breaking_features = breaking_vectorizer.get_feature_names_out()
 
-            for i, item in enumerate(breaking_list):
-                row = breaking_tfidf.getrow(i).toarray().flatten()
-                tokens_score_list = [
-                    {"term": str(breaking_features[idx]), "score": float(row[idx])}
-                    for idx in range(len(row)) if row[idx] > 0
-                ]
-                tokens_score_list = sorted(tokens_score_list, key=lambda x: x['score'], reverse=True)
+            # [저장 로직] 제외 대상도 Index에는 저장 (Requirement 충족)
+            if not is_fallback_mode:
+                for i, item in enumerate(target_breaking_list):
+                    row = breaking_tfidf.getrow(i).toarray().flatten()
+                    tokens_score_list = [
+                        {"term": str(breaking_features[idx]), "score": float(row[idx])}
+                        for idx in range(len(row)) if row[idx] > 0
+                    ]
+                    tokens_score_list = sorted(tokens_score_list, key=lambda x: x['score'], reverse=True)
 
-                action = {
-                    "_index": "news_aggr", "_id": item['news_id'],
-                    "_source": {
-                        "news_id": item['news_id'], "tokens": tokens_score_list,
-                        "tag": item['tag'], "timestamp": datetime.now().astimezone().isoformat(timespec="seconds")
+                    action = {
+                        "_index": "news_aggr", "_id": item['news_id'],
+                        "_source": {
+                            "news_id": item['news_id'], "tokens": tokens_score_list,
+                            "tag": item['tag'], "timestamp": datetime.now().astimezone().isoformat(timespec="seconds")
+                        }
                     }
-                }
-                breaking_actions.append(action)
-            logger.info(f"속보 기사 TF-IDF 완료 : {len(breaking_actions)}")
+                    breaking_actions.append(action)
+                logger.info(f"신규 속보 저장 대기: {len(breaking_actions)}건")
 
-        # 4. 일반 기사 TF-IDF
+        # ------------------------------------------------------------------
+        # [D] 일반 기사 TF-IDF 및 저장
+        # ------------------------------------------------------------------
+        norm_actions = []
         if norm_list:
             norm_corpus = [item['token'] for item in norm_list]
-            norm_vectorizer = TfidfVectorizer(ngram_range=(1, 2))
+            norm_vectorizer = TfidfVectorizer(ngram_range=(1, 2), sublinear_tf=True, max_features=3000)
             norm_tfidf = norm_vectorizer.fit_transform(norm_corpus)
             norm_features = norm_vectorizer.get_feature_names_out()
+
             for i, item in enumerate(norm_list):
                 row = norm_tfidf.getrow(i).toarray().flatten()
                 tokens_score_list = [
@@ -122,36 +183,85 @@ def news_aggr():
                     }
                 }
                 norm_actions.append(action)
-            logger.info(f"일반 기사 TF-IDF 완료 : {len(norm_actions)}")
 
-        # 5. ES 저장
+        # ------------------------------------------------------------------
+        # [E] ES Bulk 저장
+        # ------------------------------------------------------------------
         actions = breaking_actions + norm_actions
         if actions:
             success, _ = helpers.bulk(es, actions)
-            logger.info(f"success : {success}")
+            logger.info(f"ES Bulk Insert Success: {success}건")
 
-        # 6. 그룹핑 및 시각화 (속보 대상)
+        if not actions and not target_breaking_list:
+            return {"status": "no data to process"}
+
+        # ------------------------------------------------------------------
+        # [F] 그룹핑 및 시각화 (속보 대상) - 제외 대상 필터링 적용!
+        # ------------------------------------------------------------------
         final_groups = []
-        # [수정] breaking_tfidf가 None이 아닐 때만 실행
-        if breaking_actions and breaking_tfidf is not None:
+        groups_1st = []
+
+        # [1] 필터링 준비: remove_breaking_list에 없는 기사들만 골라내기
+        grouping_target_list = []
+        valid_indices = []
+        remove_set = set(remove_breaking_list)
+
+        # target_breaking_list는 전체 데이터이므로 인덱스(i)가 TF-IDF 행렬의 행 번호와 일치함
+        for i, item in enumerate(target_breaking_list):
+            if item['news_id'] not in remove_set:
+                grouping_target_list.append(item)
+                valid_indices.append(i)  # 유효한 기사의 행 번호 저장
+
+        logger.info(f"그룹핑 필터링: 전체 {len(target_breaking_list)}건 -> 그룹핑 대상 {len(grouping_target_list)}건")
+
+        # [2] 그룹핑 실행 (필터링된 리스트 사용)
+        if grouping_target_list and breaking_tfidf is not None:
             logger.info("--- 속보 기사 그룹핑 시작 ---")
-            sim_actions = cal_cosine_similarity(breaking_tfidf, breaking_list)
+
+            # [핵심] TF-IDF 행렬 Slicing: 유효한 행(valid_indices)만 뽑아서 새 행렬 생성
+            filtered_tfidf_matrix = breaking_tfidf[valid_indices]
+
+            # 코사인 유사도 계산 (필터링된 행렬 사용)
+            sim_actions = cal_cosine_similarity(filtered_tfidf_matrix, grouping_target_list)
+
+            # 1차 그룹핑 (Threshold 0.15)
+            # 이유: 짧은 기사는 단어 하나만 달라도 유사도가 낮으므로 진입장벽을 낮춤
             groups_1st, edges = topic_grouping(sim_actions)
             logger.info(f"1차 그룹핑 완료: {len(groups_1st)}개 그룹")
 
-            all_news_dict = {item['news_id']: item for item in breaking_list}
-            threshold = 0.25
+            # 2차 병합 (Threshold 0.35)
+            # 이유: 뭉쳐진 텍스트는 유사도가 높게 나오므로 엄격하게 검사
+            all_news_dict = {item['news_id']: item for item in grouping_target_list}
+            threshold = 0.35
             final_groups = merge_similar_groups(groups_1st, all_news_dict, threshold=threshold)
             logger.info(f"2차 병합 완료: {len(final_groups)}개 그룹")
 
-            graph_title = f"final_groups_threshold({threshold})"
+            # 만약 그룹핑 결과가 없으면 개별 ID 리스트로 반환 (단, 필터링된 ID들만)
+            if len(final_groups) < 1:
+                filtered_ids = [item['news_id'] for item in grouping_target_list]
+                final_groups = [[nid] for nid in filtered_ids]
+
+            # 시각화
+            time_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+            graph_title = f"final_groups_threshold({threshold})_{time_str}"
 
             try:
                 visualize_groups(final_groups, edges, title=graph_title)
             except Exception as viz_err:
                 logger.error(f"시각화 중 에러 발생: {viz_err}")
 
-        return {"first_group": groups_1st, "final_group": final_groups}
+        # 결과 출력 및 반환
+        print(f"is_fallback_mode : {is_fallback_mode}\n"
+              f"target_breaking_ids_list(전체) : {target_breaking_ids_list}\n"
+              f"removed_count : {len(remove_breaking_list)}\n"
+              f"first_group : \n{groups_1st}\n"
+              f"final_groups(필터링됨) : \n{final_groups}")
+
+        return {
+            "target_breaking_ids_list": target_breaking_ids_list,
+            "first_group": groups_1st,
+            "final_group": final_groups
+        }
 
     except Exception as e:
         logger.error(f"news_aggr error: {e}")
@@ -172,7 +282,7 @@ def cal_cosine_similarity(tfidf_matrix, news_items):
         for idx in sorted_indices:
             if i == idx: continue  # 자기 자신 제외
             score = float(sim_matrix[i][idx])
-            if score < 0.25 : break  # 유사도 임계값 설정
+            if score < 0.2 : break  # 유사도 임계값 설정
 
             related_news.append({
                 "news_id": news_items[idx]['news_id'],
@@ -209,8 +319,8 @@ def topic_grouping(news_group):
             adj_list[source_id] = set()
 
         for rel in item['related_news']:
-            # score 0.25 이상만 유효한 엣지로 간주
-            if rel['score'] >= 0.25:
+            # score 0.15 이상만 유효한 엣지로 간주
+            if rel['score'] >= 0.15:
                 target_id = rel['news_id']
                 all_nodes.add(target_id)
 
