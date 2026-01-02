@@ -15,6 +15,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 from elasticsearch import Elasticsearch
 
+from bigkinds_crawling.scheduler import sch_start
 from elasticsearch_index.es_err_crawling import index_error_log
 from logger import Logger
 from datetime import datetime, timezone, timedelta
@@ -28,35 +29,21 @@ import asyncio
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    scheduler = sch_start()
 
-    executors = {
-        'default': ThreadPoolExecutor(1)  # 크롤링은 동시에 여러 개 실행되지 않도록 제한
-    }
-    job_defaults = {
-        'coalesce': True,  # 여러 번 실행될 상황이면 한 번만 실행
-        'max_instances': 1  # 동일 작업은 무조건 1개만 실행 (중복 실행 방지)
-    }
-    scheduler = BackgroundScheduler(executors=executors, job_defaults=job_defaults)
-    # 30분 주기, 5분 지터
-    scheduler.add_job(
-        scheduled_task,
-        'interval',
-        seconds=1800,
-        jitter=300,
-        id="naver_news_job"  # 작업 식별자 추가
-    )
-
-    #scheduled_task() # uvicorn 연결 하자마자 스케줄러 실행
+    # 스케줄러 시작
     scheduler.start()
-    logger.info("NAVER 뉴스 크롤링 스케줄러 활성화(30분 주기)")
+    logger.info("통합 뉴스 크롤링 스케줄러 활성화 (10분/30분 혼합 주기)")
 
     yield
 
+    # 종료 시 스케줄러 안전 종료
     scheduler.shutdown()
-    logger.info("NAVER 크롤링 스케줄러 종료")
+    logger.info("크롤링 스케줄러 종료")
 
 app = FastAPI(lifespan=lifespan)
 logger = Logger().get_logger(__name__)
+
 
 # ---------- [설정] 엘라스틱서치 연결 ----------
 # 엘라스틱서치 서버 주소 및 인덱스 이름 설정
@@ -384,6 +371,10 @@ def crawler_naver():
     logger.info("=====NAVER 크롤링 프로세스 시작=====")
     start_time = time.time()
 
+    # 크롤링 주기 판단용
+    now = datetime.now()
+    current_minute = now.minute
+
     # ES 인덱스 생성
     try:
         ensure_news_raw()
@@ -399,11 +390,22 @@ def crawler_naver():
         return
     try:
         # 일반 기사 크롤링
-        crawling_general_news(driver)
-        # 스포츠 기사 크롤링
-        #crawling_sports_news(driver)
-        # 연예 기사 크롤링
-        crawling_enter_news(driver)
+        fast_categories = {"정치": "100", "경제": "101", "사회": "102", "세계": "104"}
+        logger.info("==========[일반/정경사세] 수집 시작==========")
+        crawling_general_news(driver, fast_categories)
+
+        if current_minute < 10 or (25 <= current_minute < 35):
+            logger.info(">>> 저주기(30분) 카테고리 수집 타임 (일반/스포츠/연예)")
+
+            # 일반 뉴스 나머지
+            slow_categories = {"생활/문화": "103", "IT/과학": "105"}
+            crawling_general_news(driver, slow_categories)
+            # 스포츠 기사 크롤링
+            crawling_sports_news(driver)
+            # 연예 기사 크롤링
+            crawling_enter_news(driver)
+        else:
+            logger.info("30분 주기 카테고리 건너뛰기")
     except Exception as e:
         logger.error(traceback.format_exc())
         error_msg =f"메인 크롤링 루프 에러: {e}"
@@ -418,7 +420,7 @@ def crawler_naver():
 # 일반기사 크롤링 함수
 def crawling_general_news(driver, categories):
     kiwi = Kiwi()
-    #categories_map = {
+    # categories = {
     # "정치": "100", "경제": "101", "사회": "102", "세계": "104", "IT/과학": "105",
     # "생활/문화(건강)": "103/241","생활/문화(자동차)": "103/239","생활/문화(도로)": "103/240","생활/문화(여행)": "103/237","생활/문화(음식)": "103/238",
     # "생활/문화(패션)": "103/376","생활/문화(공연)": "103/242","생활/문화(책)": "103/243","생활/문화(종교)": "103/244","생활/문화(일반)": "103/245"
