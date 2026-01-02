@@ -67,8 +67,8 @@ def news_aggr_start():
     return tfid
 
 
-@app.get("/news_raw_csv")
-def get_news_raw(q: Optional[str] = None):
+@app.get("/read_news_raw")
+def read_news_raw(q: Optional[str] = None):
     logger.info(f"ES 데이터 조회 요청: query={q}")
     try:
         news_list = get_news_raw(q)
