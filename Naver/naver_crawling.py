@@ -289,9 +289,9 @@ def pubtime_update(news_id):
 
 ################################################################################################################
 # Semaphore(접속 수 제한:3)
-sem = asyncio.Semaphore(3)
+#sem = asyncio.Semaphore(3)
 
-async def process_article(item, cat_name, kiwi):
+async def process_article(item, cat_name, kiwi, sem):
     async with sem:
         try:
             link_tag = item.select_one("a")
@@ -454,7 +454,9 @@ def crawling_general_news(driver, categories):
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
 
-            tasks = [process_article(item, cat_name, kiwi) for item in items]
+            sem = asyncio.Semaphore(3)
+
+            tasks = [process_article(item, cat_name, kiwi, sem) for item in items]
             results = loop.run_until_complete(asyncio.gather(*tasks))
             loop.close()
 
