@@ -1,11 +1,10 @@
-# pip install lxml
 import time
 import random
 import hashlib
 import traceback
 
 import requests
-from bs4 import BeautifulSoup, Tag
+from bs4 import BeautifulSoup
 from fastapi import FastAPI
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
@@ -20,7 +19,9 @@ from datetime import datetime, timezone, timedelta
 from contextlib import asynccontextmanager
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.executors.pool import ThreadPoolExecutor
-#from kiwipiepy import Kiwi
+from kiwipiepy import Kiwi
+from elasticsearch_index.es_raw import tokens, ensure_news_raw, ES_INDEX
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -57,7 +58,7 @@ logger = Logger().get_logger(__name__)
 # ---------- [설정] 엘라스틱서치 연결 ----------
 # 엘라스틱서치 서버 주소 및 인덱스 이름 설정
 ES_HOST = "http://localhost:9200"
-INDEX_NAME = "news_raw"
+ES_INDEX = "news_raw"
 es = Elasticsearch(ES_HOST)
 
 
@@ -93,7 +94,7 @@ def id_dupl(news_id):
         if not es.ping():
             logger.error("ES 서버 연결 끊김")
             return True  # 안전을 위해 중복으로 간주하여 저장 시도 방지
-        return es.exists(index=INDEX_NAME, id=news_id)
+        return es.exists(index=ES_INDEX, id=news_id)
     except Exception as e:
         logger.error(f"ES PK 중복 확인 중 에러 발생 (ID: {news_id}): {e}")
         return False
@@ -119,15 +120,15 @@ def get_article_detail(url, category_name):
 
         # 1-1. 첫 번째 이미지 및 캡션 추출 (제거하기 전에 미리 저장)
         imgURL = None
-        imgCaption = None
+        imgCap = None
         first_photo = content_area.select_one("span.end_photo_org")
         if first_photo:
-            img_tag = first_photo.select_one("img")
+            img_tag = first_photo.select_one("#img1")
             cap_tag = first_photo.select_one("em.img_desc")
             if img_tag:
                 imgURL = img_tag.get("src") or img_tag.get("data-src")
             if cap_tag:
-                imgCaption = cap_tag.get_text(strip=True)
+                imgCap = cap_tag.get_text(strip=True)
 
         # 1-2. 본문 정제 (광고, 캡션, 이미지, 표 등 불필요한 요소 통째로 삭제)
         for junk in content_area.select("table, .link_tagger, .script_tag, span.end_photo_org, div.ad_body_res"):
@@ -186,7 +187,7 @@ def get_article_detail(url, category_name):
             "pubtime": pubtime,
             "writer": writer,
             "imgURL": imgURL,
-            "imgCaption": imgCaption,
+            "imgCap": imgCap,
             "category": category
         }
     except Exception as e:
@@ -214,13 +215,13 @@ def get_sports_article_detail(url, category_name):
 
         # 첫 번째 이미지 및 캡션 추출
         imgURL = None
-        imgCaption = None
+        imgCap = None
         img_wrap = soup.select_one("span[class*='ArticleImage_image_wrap']")
         if img_wrap:
             img_tag = img_wrap.select_one("img")
             if img_tag: imgURL = img_tag.get("src")
             cap_tag = img_wrap.find_next(["em", "p"], class_=lambda x: x and ("img_desc" in x or "caption" in x))
-            if cap_tag: imgCaption = cap_tag.get_text(strip=True)
+            if cap_tag: imgCap = cap_tag.get_text(strip=True)
 
         # 2. 본문 정제
         for junk in content_area.select("div[class*='ArticleImage_image_wrap'], em.img_desc, p.caption, div.ad_area"):
@@ -272,7 +273,7 @@ def get_sports_article_detail(url, category_name):
             "pubtime": pubtime,
             "writer": writer,
             "imgURL": imgURL,
-            "imgCaption": imgCaption,
+            "imgCap": imgCap,
             "category": "스포츠"
         }
     except Exception as e:
@@ -285,16 +286,16 @@ def crawler_naver():
     logger.info("=====NAVER 크롤링 프로세스 시작=====")
     start_time = time.time()
 
-    # ES 인덱스 생성 체크
+    # ES 인덱스 생성
     try:
-        if not es.indices.exists(index=INDEX_NAME):
-            es.indices.create(index=INDEX_NAME)
+        ensure_news_raw()
     except Exception as e:
-        logger.error(f"ES 인덱스 체크 실패: {e}")
+        logger.error(f"ES 인덱스 초기화 실패 (ensure_news_raw): {e}")
         return
 
     driver = get_safe_driver()
     if not driver:
+        logger.error("드라이버 로드 실패로 크롤링을 중단합니다.")
         return
     try:
         # 일반 기사 크롤링
@@ -305,6 +306,7 @@ def crawler_naver():
         crawling_enter_news(driver)
     except Exception as e:
         logger.error(f"메인 크롤링 루프 에러: {e}")
+        logger.error(traceback.format_exc())
     finally:
         if driver:
             driver.quit()
@@ -313,10 +315,10 @@ def crawler_naver():
 ################################################################################################################
 # 일반기사 크롤링 함수
 def crawling_general_news(driver):
-    #kiwi = Kiwi()
-    categories_map = {"사회": "102",
-                      "생활/문화(일반)": "103/245"
-                      }
+    kiwi = Kiwi()
+    categories_map = {
+        "정치": "100", "경제": "101", "사회": "102", "세계": "104"
+        }
 
     for cat_name, cat_id in categories_map.items():
         start_time = time.time()
@@ -326,7 +328,7 @@ def crawling_general_news(driver):
                 url = f"https://news.naver.com/breakingnews/section/{cat_id}"
             else:
                 url = f"https://news.naver.com/section/{cat_id}"
-            logger.info(f"======[{cat_name}] 수집 시작======")
+            logger.info(f"======[일반/{cat_name}] 수집 시작======")
             driver.get(url)
 
             # 더보기 클릭 (2회)
@@ -393,29 +395,27 @@ def crawling_general_news(driver):
                     logger.warning(f"[SKIP] 필수 정보 누락(본문/언론사/기자/URL: {naver_url}")
                     continue
 
-                ####################여기 키위토큰############################################
-                #token = tokens({"title": title, "content": content}, kiwi)
+                token = tokens({"title": title, "content": content}, kiwi)
 
                 # --- 엘라스틱서치 저장 ---
                 doc = {
                     "news_id": news_id,
                     "tag": "breaking" if "[속보]" in title else "normal",
                     "title": title.replace("[속보]", "").replace('\\', '').strip(),
-                    #"title_tokens": token["title_tokens"],
+                    "title_tokens": token["title_tokens"],
                     "content": content,
-                    #"content_tokens": token["content_tokens"],
-                    "URL": URL,
-                    "naver_url": naver_url,
+                    "content_tokens": token["content_tokens"],
+                    "link": URL,
                     "media": detail.get("media", "").replace('\\', ''),
                     "pubdate": detail.get("pubdate"),
                     "pubtime": detail.get("pubtime"),
                     "category": detail.get("category"),
                     "writer": detail.get("writer", "").replace('\\', ''),
-                    "imgURL": detail.get("imgURL"),
-                    "imgCaption": detail.get("imgCaption"),
+                    "img": detail.get("imgURL"),
+                    "imgCap": detail.get("imgCap"),
                     "timestamp": datetime.now(timezone(timedelta(hours=9))).isoformat(timespec='seconds')
                 }
-                es.index(index=INDEX_NAME, id=news_id, document=doc)
+                es.index(index=ES_INDEX, id=news_id, document=doc)
                 saved_count += 1
                 time.sleep(random.uniform(0.5, 1.0))
 
@@ -435,10 +435,11 @@ def crawling_general_news(driver):
 ################################################################################################################
 # 스포츠기사 크롤링 함수
 def crawling_sports_news(driver):
-    # kiwi = Kiwi()
+    kiwi = Kiwi()
     sports_categories = {
-                         "농구": "basketball",
-                         "국내축구": "kfootball"}
+        "국내야구": "kbaseball","해외야구": "wbaseball","국내축구": "kfootball","해외축구": "wfootball",
+        "농구": "basketball","배구": "volleyball","일반": "general","골프": "golf"
+        }
 
     for s_name, s_id in sports_categories.items():
         start_time = time.time()
@@ -448,7 +449,7 @@ def crawling_sports_news(driver):
 
         try:
             url = f"https://m.sports.naver.com/{s_id}/news"
-            logger.info(f"[======스포츠/{s_name}] 수집 시작======")
+            logger.info(f"======[스포츠/{s_name}] 수집 시작======")
             driver.get(url)
             time.sleep(random.uniform(2.5, 3.5))
 
@@ -526,9 +527,9 @@ def crawling_sports_news(driver):
                     duplicate_count = 0
 
                     required_fields = {
-                        "본문": detail.get("content"),
-                        "언론사": detail.get("media"),
-                        "원문URL": detail.get("URL")
+                        "content": detail.get("content"),
+                        "media": detail.get("media"),
+                        "URL": detail.get("URL")
                         }
 
                     # 하나라도 없으면 건너뜀
@@ -537,28 +538,27 @@ def crawling_sports_news(driver):
                         logger.warning(f"[SKIP] 필수 정보 누락({', '.join(missing_names)}): {naver_url}")
                         continue
 
-                    ####################여기 키위토큰############################################
-                    # token = tokens({"title": title, "content": content}, kiwi)
+
+                    token = tokens({"title": title, "content": detail.get("content")}, kiwi)
 
                     doc = {
                         "news_id": news_id,
                         "tag": "breaking" if "[속보]" in title else "normal",
                         "title": title.replace("[속보]", "").replace('\\', '').strip(),
-                        # "title_tokens": token["title_tokens"],
+                        "title_tokens": token["title_tokens"],
                         "content": detail.get("content", ""),
-                        # "content_tokens": token["content_tokens"],
+                        "content_tokens": token["content_tokens"],
                         "writer": detail.get("writer", "").replace('\\', ''),
                         "media": detail.get("media", "").replace('\\', ''),
                         "pubdate": detail.get("pubdate"),
                         "pubtime": detail.get("pubtime"),
                         "category": "스포츠",
-                        "imgURL": detail.get("imgURL"),
-                        "imgCaption": detail.get("imgCaption"),
-                        "URL": detail.get("URL"),
-                        "naver_url": naver_url,
+                        "img": detail.get("imgURL"),
+                        "imgCap": detail.get("imgCap"),
+                        "link": detail.get("URL"),
                         "timestamp": datetime.now(timezone(timedelta(hours=9))).isoformat(timespec='seconds')
                     }
-                    es.index(index=INDEX_NAME, id=news_id, document=doc)
+                    es.index(index=ES_INDEX, id=news_id, document=doc)
                     saved_count += 1
                     time.sleep(random.uniform(0.5, 1.0))
 
@@ -576,7 +576,7 @@ def crawling_sports_news(driver):
 ################################################################################################################
 # 연예 기사 크롤링 함수
 def crawling_enter_news(driver):
-    # kiwi = Kiwi()
+    kiwi = Kiwi()
     start_time = time.time()
     saved_count = 0
     duplicate_count = 0
@@ -584,7 +584,7 @@ def crawling_enter_news(driver):
 
     try:
         url = "https://m.entertain.naver.com/now"
-        logger.info("[======연예 뉴스] 수집 시작======")
+        logger.info("[======[연예] 수집 시작======")
         driver.get(url)
         time.sleep(random.uniform(2.5, 3.5))
 
@@ -669,30 +669,29 @@ def crawling_enter_news(driver):
                         logger.warning(f"[SKIP] 필수 정보 누락({', '.join(missing_names)}): {naver_url}")
                         continue
 
-                    ####################여기 키위토큰############################################
-                    # token = tokens({"title": title, "content": content}, kiwi)
+
+                    token = tokens({"title": title, "content": detail.get("content")}, kiwi)
 
                     doc = {
                         "news_id": news_id,
                         "tag": "breaking" if "[속보]" in title else "normal",
                         "title": title.replace("[속보]", "").replace('\\', '').strip(),
-                        # "title_tokens": token["title_tokens"],
+                        "title_tokens": token["title_tokens"],
                         "content": detail.get("content", ""),
-                        # "content_tokens": token["content_tokens"],
+                        "content_tokens": token["content_tokens"],
                         "writer": detail.get("writer", "").replace('\\', ''),
                         "media": detail.get("media", "").replace('\\', ''),
                         "pubdate": detail.get("pubdate"),
                         "pubtime": detail.get("pubtime"),
                         "category": "연예",
-                        "imgURL": detail.get("imgURL"),
-                        "imgCaption": detail.get("imgCaption"),
-                        "URL": detail.get("URL"),
-                        "naver_url": naver_url,
+                        "img": detail.get("imgURL"),
+                        "imgCap": detail.get("imgCap"),
+                        "link": detail.get("URL"),
                         "timestamp": datetime.now(timezone(timedelta(hours=9))).isoformat(timespec='seconds')
                     }
 
                     # ES 저장
-                    es.index(index=INDEX_NAME, id=news_id, document=doc)
+                    es.index(index=ES_INDEX, id=news_id, document=doc)
                     saved_count += 1
                     time.sleep(random.uniform(0.8, 1.2))
 

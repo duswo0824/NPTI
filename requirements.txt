@@ -13,6 +13,7 @@ selenium
 beautifulsoup4
 requests
 webdriver_manager
+lxml
 
 # scheduler
 apscheduler
