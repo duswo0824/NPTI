@@ -14,12 +14,12 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 from elasticsearch import Elasticsearch
+from elasticsearch import NotFoundError
 
 
 from elasticsearch_index.es_err_crawling import index_error_log
 from logger import Logger
 from datetime import datetime, timezone, timedelta
-from contextlib import asynccontextmanager
 from kiwipiepy import Kiwi
 from elasticsearch_index.es_raw import tokens, ensure_news_raw, ES_INDEX
 import asyncio
@@ -276,18 +276,15 @@ def get_sports_article_detail(url, category_name):
 def pubtime_update(news_id):
     try:
         res = es.get(index=ES_INDEX, id=news_id)
-        if res.get('found'):
-            source = res.get('_source', {})
-            # pubtime이 없거나(None), 빈 문자열("")인 경우 True 반환 (업데이트 필요)
-            if not source.get('pubtime'):
-                return "UPDATE_NEEDED"
-            return "ALREADY_EXISTS"
+        source = res.get('_source', {})
+        if not source.get('pubtime'):
+            return "UPDATE_NEEDED"
+        return "ALREADY_EXISTS"
+    except NotFoundError:
         return "NEW_DOC"
     except Exception as e:
-        error_msg =f"B->N pubtime_update 중 에러:{e}"
-        logger.error(error_msg)
-        index_error_log(error_msg, "NAVER")
-        # 문서가 없으면 NotFoundError가 발생하므로 새 문서로 간주
+        # 401(인증), 500(서버에러) 등 실제 에러만 기록
+        logger.error(f"B->N pubtime_update 중 실제 장애 발생: {e}")
         return "NEW_DOC"
 
 ################################################################################################################
