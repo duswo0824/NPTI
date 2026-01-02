@@ -1,22 +1,16 @@
-import hashlib
-import pandas as pd
-from fastapi import FastAPI
-from selenium.webdriver.chromium.options import ChromiumOptions
-from selenium.webdriver.chrome.service import Service
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.wait import WebDriverWait
-from selenium.webdriver.support import expected_conditions as ec
+from fastapi import FastAPI, Depends, HTTPException, Query
 from bigkinds_crawling.scheduler import sch_start
-
 from bigkinds_crawling.sample import sample_crawling, get_sample
 from logger import Logger
-import time
 from typing import Optional
-from elasticsearch_index.es_raw import ensure_news_raw, index_sample_row, search_news_row, tokens
-from elasticsearch_index.es_raw import es, ES_INDEX
-from kiwipiepy import Kiwi
-from bigkinds_crawling.news_raw import news_crawling, get_news_raw, news_aggr
+from bigkinds_crawling.news_raw import news_crawling, get_news_raw
+from bigkinds_crawling.news_aggr_grouping import news_aggr
+from sqlalchemy.orm import Session
+from database import get_db
+from db_index.db_npti_type import get_all_npti_type, get_npti_type_by_group, npti_type_response
+from db_index.db_npti_code import get_all_npti_codes, get_npti_code_by_code, npti_code_response
+from db_index.db_npti_question import get_all_npti_questions, get_npti_questions_by_axis, npti_question_response
+from db_index.db_user_info import UserCreateRequest, insert_user
 
 app = FastAPI()
 logger = Logger().get_logger(__name__)
@@ -73,8 +67,8 @@ def news_aggr_start():
     return tfid
 
 
-@app.get("/news_raw_csv")
-def get_news_raw(q: Optional[str] = None):
+@app.get("/read_news_raw")
+def read_news_raw(q: Optional[str] = None):
     logger.info(f"ES 데이터 조회 요청: query={q}")
     try:
         news_list = get_news_raw(q)
@@ -88,3 +82,69 @@ def get_news_raw(q: Optional[str] = None):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+    # ----------------------------------------------------------------------------
+@app.get("/npti/types", response_model=list[npti_type_response])
+def npti_type_list(db: Session = Depends(get_db)):
+    try:
+        return get_all_npti_type(db)
+    except Exception as e:
+        logger.error(f"실행 중 오류 발생: {e}")
+
+
+@app.get("/npti/types/group", response_model=list[npti_type_response])
+def npti_type_by_group(group: str = Query(...), db: Session = Depends(get_db)):
+    try:
+        return get_npti_type_by_group(db, group)
+    except Exception as e:
+        logger.error(f"실행 중 오류 발생: {e}")
+
+
+@app.get("/npti/codes", response_model=list[npti_code_response])
+def npti_code_list(db: Session = Depends(get_db)):
+    try:
+        return get_all_npti_codes(db)
+    except Exception as e:
+        logger.error(f"실행 중 오류 발생: {e}")
+
+@app.get("/npti/codes/{code}", response_model=npti_code_response)
+def npti_code_detail(code: str, db: Session = Depends(get_db)):
+    try:
+        result = get_npti_code_by_code(db, code)
+        if not result:
+            return {'msg': 'npti_code를 찾을 수 없습니다.'}
+        return result
+    except Exception as e:
+        logger.error(f"실행 중 오류 발생: {e}")
+
+# 관리자
+@app.get("/npti/questions", response_model=list[npti_question_response])
+def npti_question_list(db: Session = Depends(get_db)):
+    try:
+        return get_all_npti_questions(db)
+    except Exception as e:
+        logger.error(f"실행 중 오류 발생: {e}")
+
+# 사용자
+@app.get("/npti/questions/axis", response_model=list[npti_question_response])
+def npti_question_by_axis(axis: str = Query(...), db: Session = Depends(get_db)):
+    try:
+        return get_npti_questions_by_axis(db, axis)
+    except Exception as e:
+        logger.error(f"실행 중 오류 발생: {e}")
+
+# 가입용
+@app.post("/users")
+def create_user(req: UserCreateRequest, db: Session = Depends(get_db)):
+
+    try:
+        insert_user(db, req.model_dump())
+        db.commit()
+
+        logger.info(f"회원가입 성공: {req.user_id}")
+        return "회원가입에 성공했습니다"
+
+    except Exception as e:
+        db.rollback()
+        logger.error(f"회원가입 오류: user_id={req.user_id}, error={e}")
+        return "회원가입 처리 중 오류가 발생했습니다"
+

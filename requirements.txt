@@ -7,9 +7,14 @@ python-multipart
 pymysql
 sqlalchemy
 elasticsearch
+pydantic[email]
 
 # crawling
 selenium
+beautifulsoup4
+requests
+webdriver_manager
+lxml
 
 # scheduler
 apscheduler
@@ -18,6 +23,7 @@ psutil
 # 전처리
 pandas
 kiwipiepy
+Korpora
 
 # 머신러닝
 scikit-learn
