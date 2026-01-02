@@ -25,21 +25,7 @@ from elasticsearch_index.es_raw import tokens, ensure_news_raw, ES_INDEX
 import asyncio
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    scheduler = sch_start()
-
-    # 스케줄러 시작
-    scheduler.start()
-    logger.info("통합 뉴스 크롤링 스케줄러 활성화 (10분/30분 혼합 주기)")
-
-    yield
-
-    # 종료 시 스케줄러 안전 종료
-    scheduler.shutdown()
-    logger.info("크롤링 스케줄러 종료")
-
-app = FastAPI(lifespan=lifespan)
+app = FastAPI()
 logger = Logger().get_logger(__name__)
 
 
@@ -47,7 +33,14 @@ logger = Logger().get_logger(__name__)
 # 엘라스틱서치 서버 주소 및 인덱스 이름 설정
 ES_HOST = "http://localhost:9200"
 ES_INDEX = "news_raw"
-es = Elasticsearch(ES_HOST)
+ES_USER = "elastic"
+ES_PASS = "elastic"
+es = Elasticsearch( # elasticsearch 연결 객체 생성
+    ES_HOST,
+    basic_auth=(ES_USER, ES_PASS),
+    verify_certs=False,
+    ssl_show_warn=False # type: ignore
+)
 
 
 # ---------- [설정] Selenium 드라이버 초기화 함수 ----------
