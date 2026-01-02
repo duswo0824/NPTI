@@ -20,8 +20,6 @@ from elasticsearch_index.es_err_crawling import index_error_log
 from logger import Logger
 from datetime import datetime, timezone, timedelta
 from contextlib import asynccontextmanager
-from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.executors.pool import ThreadPoolExecutor
 from kiwipiepy import Kiwi
 from elasticsearch_index.es_raw import tokens, ensure_news_raw, ES_INDEX
 import asyncio
@@ -94,6 +92,7 @@ def id_dupl(news_id):
         return False
 
 
+################################################################################################################
 # ---------- 기사 상세 feature 가지고 오기(본문,원문URL,언론사,발행일,발행시간,카테고리,기자,이미지URL,이미지캡션) ----------
 def get_article_detail(url, category_name):
     headers = {
@@ -191,6 +190,7 @@ def get_article_detail(url, category_name):
         return None
 
 
+################################################################################################################
 # ---------- [스포츠/연예]기사 상세 feature 가지고 오기(본문,원문URL,언론사,발행일,발행시간,카테고리,기자,이미지URL,이미지캡션) ----------
 def get_sports_article_detail(url, category_name):
     headers = {
@@ -279,6 +279,7 @@ def get_sports_article_detail(url, category_name):
         return None
 
 ################################################################################################################
+# pubdate 업데이트 확인 함수
 def pubtime_update(news_id):
     try:
         res = es.get(index=ES_INDEX, id=news_id)
@@ -771,19 +772,6 @@ def crawling_enter_news(driver):
         index_error_log(error_msg, "NAVER")
 
     logger.info("연예 기사 수집 프로세스 종료")
-
-
-################################################################################################################
-# 스케줄러 설정
-def scheduled_task():
-    try:
-        crawler_naver()
-    except Exception as e:
-        error_msg =f"NAVER 스케줄러 예외 발생: {e}"
-        logger.error(error_msg)
-        index_error_log(error_msg, "NAVER")
-
-
 
 
 
