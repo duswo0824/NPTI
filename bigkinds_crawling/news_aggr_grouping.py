@@ -12,6 +12,39 @@ from elasticsearch import helpers
 
 logger = Logger().get_logger(__name__)
 
+def related_news(news_title:str, exclude_id:str, category:str):
+    body = {
+        "size":5,
+        "_source":["news_id","title","pubdate","media","img"],
+        "query":{
+            "bool":{
+                "must":[
+                    {"multi_match":{
+                        "query":news_title,
+                        "fields":["title", "content"]
+                    }}
+                ],
+                "must_not":[
+                    {"term":{"news_id":exclude_id}},
+                ],
+                "filter":[
+                    {"term":{"category":category}},
+                ]
+            }
+        }
+    }
+    try:
+        res = es.search(index="news_raw", body=body)
+        hits = res["hits"]["hits"]
+        results = []
+        for hit in hits:
+            doc = hit["_source"]
+            doc["_score"] = hit["_score"]
+            results.append(doc)
+        return results
+    except Exception as e:
+        logger.info(f"검색 중 에러 발생 : {e}")
+        return None
 
 
 kiwi = Kiwi()
@@ -241,14 +274,14 @@ def news_aggr():
                 filtered_ids = [item['news_id'] for item in grouping_target_list]
                 final_groups = [[nid] for nid in filtered_ids]
 
-            # 시각화
-            time_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-            graph_title = f"final_groups_threshold({threshold})_{time_str}"
-
-            try:
-                visualize_groups(final_groups, edges, title=graph_title)
-            except Exception as viz_err:
-                logger.error(f"시각화 중 에러 발생: {viz_err}")
+            # # 시각화
+            # time_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+            # graph_title = f"final_groups_threshold({threshold})_{time_str}"
+            #
+            # try:
+            #     visualize_groups(final_groups, edges, title=graph_title)
+            # except Exception as viz_err:
+            #     logger.error(f"시각화 중 에러 발생: {viz_err}")
 
         # 결과 출력 및 반환
         print(f"is_fallback_mode : {is_fallback_mode}\n"
