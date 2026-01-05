@@ -33,6 +33,7 @@
     padding: 10px 10px;
     width:auto;
     background-color: #FFF2EB;
+    margin-bottom: 5px !important;
 }
 
 .tag-text {
@@ -55,7 +56,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border-bottom: 2px solid rgb(17, 17, 17, 0.2);
+    border-bottom: 1px solid rgb(17, 17, 17, 0.2);
     padding-bottom: 12px;
 }
 
@@ -143,13 +144,6 @@
     font-weight: 700;
     margin: 0 0 12px 0;
     line-height: 1.4;
-}
-
-.news-info p {
-    font-size: 15px;
-    color: #555;
-    line-height: 1.6;
-    margin-bottom: 10px;
     /* 두 줄 이상 말줄임 처리 */
     display: -webkit-box;
     -webkit-line-clamp: 2;
@@ -157,7 +151,78 @@
     overflow: hidden;
 }
 
+.news-info p {
+    font-size: 15px;
+    color: #555;
+    line-height: 1.6;
+    margin-bottom: 10px;
+    /* 세 줄 이상 말줄임 처리 */
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
 .news-meta {
     font-size: 13px;
     color: #999;
+}
+
+/* 정렬 탭 스타일 */
+.sort-tabs {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+    margin-left: auto;
+}
+
+.sort-btn {
+    background: none;
+    border: none;
+    font-size: 14px;
+    color: #999;
+    cursor: pointer;
+    padding: 0;
+    position: relative;
+}
+
+/* 선택된 탭 강조 (주황색) */
+.sort-btn.active {
+    color: #ff6b00;
+    font-weight: 700;
+}
+
+/* 탭 사이의 구분선 (|) */
+.sort-btn:not(:last-child)::after {
+    content: "";
+    display: inline-block;
+    width: 1px;
+    height: 10px;
+    background-color: #ddd;
+    margin-left: 15px;
+    vertical-align: middle;
+}
+
+/* 페이지네이션 */
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    margin: 50px 0;
+}
+
+.pagination button {
+    border: none;
+    background: none;
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 15px;
+    color: #999;
+}
+
+.pagination .page-num.active {
+    color: #ff6b00;
+    font-weight: 700;
+    text-decoration: underline;
 }

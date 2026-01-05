@@ -321,7 +321,7 @@ ul {
     display: flex;
     justify-content: space-between; /* 양 끝 정렬 */
     align-items: center; /* 수직 중앙 정렬 */
-    border-bottom: 2px solid rgb(17, 17, 17,0.2); ; /* 메뉴 아래 검은 줄 (디자인 포인트) */
+    border-bottom: 1px solid rgb(17, 17, 17,0.2); ; /* 메뉴 아래 검은 줄 (디자인 포인트) */
     padding-bottom: 12px;
 }
 
@@ -604,8 +604,7 @@ ul {
 /* 1. 윗줄 (뱃지 + 직업명) */
 .title-area {
     display: flex;
-    align-items: center;
-    /* 수직 중앙 정렬 */
+    align-items: center; /* 수직 중앙 정렬 */
     gap: 12px;
 }
 
@@ -686,7 +685,7 @@ ul {
 
 /* 하단 탭 스타일을 상단(.nav-row)과 구조적으로 동일하게 맞춤 */
 .nav-tabs.border-type {
-    border-bottom: 2px solid rgba(17, 17, 17, 0.2);
+    border-bottom: 1px solid rgba(17, 17, 17, 0.2);
     padding-bottom: 18px;
     margin-bottom: 30px;
 }

@@ -100,6 +100,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // [확인] 버튼 클릭 시 이동 로직
     document.getElementById('goToResult')?.addEventListener('click', function () {
-        location.href = "/html/result.html"; // 결과 페이지 경로
+        location.href = "/view/html/result.html"; // 결과 페이지 경로
     });
 });

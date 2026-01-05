@@ -1,6 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
 
-    // ============================================
     // 1. 공통 데이터 생성 함수 (슬라이더 & 그리드 공용)
     // ============================================
     function getNewsData(category) {
@@ -11,12 +10,28 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         const name = catNames[category] || '전체';
 
+        const nptiResult = localStorage.getItem('nptiResult');
+        const oppositeMap = { 'S': 'L', 'L': 'S', 'T': 'C', 'C': 'T', 'F': 'I', 'I': 'F', 'N': 'P', 'P': 'N' };
+
+        let typeTag; // 제목 앞에 붙을 태그
+        let typeId;  // 데이터 구분을 위한 ID
+
+        if (nptiResult) { // [로그인/진단완료] 진단 결과의 반대 성향을 가져옴
+            typeTag = `[${nptiResult}]`;
+            typeId = nptiResult;
+        } else {
+            // [로그아웃/미진단] 요청하신 대로 "NPTI PICK"으로 표시
+            typeTag = `[NPTI PICK]`;
+            typeId = "GUEST"; // 기본값 ID
+        }
+
         const data = [];
         for (let i = 1; i <= 9; i++) {
             data.push({
-                title: `[${name}] 관련 주요 뉴스 헤드라인 예시 ${i}번입니다`,
-                // 요청하신 텍스트 포맷 적용
-                desc: `${name} 분야의 ${i}번째 기사입니다. 이 박스 영역 어디를 눌러도 기사 페이지로 이동합니다.`,
+                id: `${typeId}_slider_${i}`,
+                // 로그아웃 시 제목이 "[NPTI PICK] 성향에 맞는 전체 관련..."으로 바뀝니다.
+                title: `${typeTag} 성향에 맞는 ${name} 관련 주요 뉴스 헤드라인 예시 ${i}번입니다`,
+                desc: `${name} 분야의 ${i}번째 기사입니다.`,
                 img: '',
                 link: '#'
             });
@@ -24,7 +39,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return data;
     }
 
-    // ============================================
     // 2. 속보 롤링 기능 (Ticker)
     // ============================================
 
@@ -51,7 +65,7 @@ document.addEventListener('DOMContentLoaded', () => {
             li.className = 'ticker-item';
 
             // [수정] href 주소를 /html/view.html?id=아이디 형식으로 변경
-            li.innerHTML = `<a href="/html/view.html?id=${item.id}" class="ticker-link">${item.title}</a>`;
+            li.innerHTML = `<a href="/view/html/view.html?id=${item.id}" class="ticker-link">${item.title}</a>`;
 
             list.appendChild(li);
         });
@@ -81,7 +95,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     startTicker();
 
-    // ============================================
     // 3. 상단 메인 슬라이더 (Hero Slider)
     // ============================================
     const sliderWrapper = document.querySelector('.hero-slider-wrapper');
@@ -106,14 +119,14 @@ document.addEventListener('DOMContentLoaded', () => {
         track.style.transition = 'none';
         track.style.transform = `translateX(0)`;
 
-        currentData = getNewsData(category);
+        currentData = getNewsData(category); // 현재 NPTI 유형이 반영된 데이터
 
         currentData.forEach((news, index) => {
             const slide = document.createElement('a');
             slide.className = 'hero-slide';
 
             // 고유 아이디를 사용해 view 페이지로 연결
-            slide.href = `/html/view.html?id=${news.id}`;
+            slide.href = `/view/html/view.html?id=${news.id}`;
 
             slide.innerHTML = `
             <div class="slide-img-box">
@@ -179,6 +192,7 @@ document.addEventListener('DOMContentLoaded', () => {
         clearInterval(slideInterval);
         slideInterval = setInterval(() => moveToSlide(currentIndex + 1), 4000);
     }
+
     function stopAutoSlide() { clearInterval(slideInterval); }
     function resetAutoSlide() { stopAutoSlide(); startAutoSlide(); }
 
@@ -217,29 +231,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function initGrid(category) {
         if (!gridContainer) return;
+        gridContainer.innerHTML = '';
 
-        gridContainer.innerHTML = ''; // 기존 내용 삭제
+        // 현재 선택된 4글자 유형(처음엔 LCIP)과 카테고리명 가져오기
+        const type = currentSelection.join('');
+        const catNames = {
+            all: '전체', politics: '정치', economy: '경제', society: '사회',
+            culture: '생활/문화', it: 'IT/과학', world: '세계', sports: '스포츠',
+            enter: '연예', local: '지역'
+        };
+        const categoryName = catNames[category] || '전체';
 
-        // 1. 데이터를 가져올 때 각 아이템에 id가 포함되어 있어야 함
-        const gridData = getNewsData(category);
-
-        gridData.forEach(news => {
-            // 2. 카드 전체를 클릭 가능한 a태그로 생성
+        // 9개의 기사를 즉시 생성
+        for (let i = 1; i <= 9; i++) {
             const item = document.createElement('a');
             item.className = 'grid-item';
-
-            // 3. [수정] news.link 대신 고유 id를 이용한 상세 페이지 경로 설정
-            // 데이터 생성 시 news.id가 부여되어 있다고 가정합니다.
-            item.href = `/html/view.html?id=${news.id}`;
+            item.href = `/view/html/view.html?id=${type}_${i}`;
 
             item.innerHTML = `
             <div class="grid-thumb">
-                ${news.img ? `<img src="${news.img}" alt="뉴스 썸네일">` : `<i class="fa-regular fa-image"></i>`}
+                <i class="fa-regular fa-image"></i>
             </div>
-            <h4 class="grid-title">${news.title}</h4>
+            <h4 class="grid-title">
+                [${type}] 성향에 맞는 ${categoryName} 관련 주요 뉴스 헤드라인 예시 ${i}번 입니다.
+            </h4>
         `;
             gridContainer.appendChild(item);
-        });
+        }
     }
 
     // 하단 탭 이벤트
@@ -273,130 +291,214 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 최초 실행
     initSlider('all');
-    initGrid('all');
+    // initGrid('all');
 });
 
-// ==========================================
-// 1. [DB] 유형별 데이터 정의 (여기만 고치면 텍스트/색상 변경 가능)
+
+// 1. 전역 변수 및 데이터 정의
 // ==========================================
 const typeDB = {
-    // 1번 슬롯 (L <-> S)
-    'L': { text: '긴',       color: 'blue' },
-    'S': { text: '짧은',     color: 'orange' },
-    
-    // 2번 슬롯 (C <-> T)
+    'L': { text: '긴', color: 'blue' },
+    'S': { text: '짧은', color: 'orange' },
     'C': { text: '텍스트형', color: 'blue' },
     'T': { text: '이야기형', color: 'orange' },
-    
-    // 3번 슬롯 (I <-> F)
-    'I': { text: '분석적',   color: 'blue' },
-    'F': { text: '객관적',   color: 'orange' },
-    
-    // 4번 슬롯 (P <-> N)
-    'P': { text: '우호적',   color: 'blue' },
-    'N': { text: '비판적',   color: 'orange' }
+    'I': { text: '분석적', color: 'blue' },
+    'F': { text: '객관적', color: 'orange' },
+    'P': { text: '우호적', color: 'blue' },
+    'N': { text: '비판적', color: 'orange' }
 };
 
-// 각 슬롯별 짝꿍 정의 (기본값, 대체값)
-const pairs = [
-    ['L', 'S'], // index 0
-    ['C', 'T'], // index 1
-    ['I', 'F'], // index 2
-    ['P', 'N']  // index 3
-];
-
-// 현재 사용자의 반대 선택 상태 (초기값: L, C, I, P)
-let currentSelection = ['L', 'C', 'I', 'P']; 
+const pairs = [['L', 'S'], ['C', 'T'], ['I', 'F'], ['P', 'N']];
+let currentSelection = ['L', 'C', 'I', 'P']; // 초기 기본값
 
 
-// ==========================================
-// 2. 메인 로직 실행
+// 2. 메인 초기화 (DOMContentLoaded)
 // ==========================================
 document.addEventListener('DOMContentLoaded', () => {
-    
-    // 4개의 슬롯에 대해 각각 이벤트 연결
-    for (let i = 0; i < 4; i++) {
-        const badgeEl = document.getElementById(`badge-${i}`);
-        
-        // 클릭 이벤트 연결
-        badgeEl.addEventListener('click', function() {
-            toggleSlot(i);
+
+    const nptiResult = localStorage.getItem('nptiResult'); // 예: 'STFN'
+    const bottomBadges = document.getElementById('lcin-badges');
+    const bottomTagText = document.querySelector('.section-lcin .tag-text');
+    const titleArea = document.querySelector('.section-pick .title-area');
+
+    const oppositeMap = { 'S': 'L', 'L': 'S', 'T': 'C', 'C': 'T', 'F': 'I', 'I': 'F', 'N': 'P', 'P': 'N' };
+    const descMap = { 'S': '짧은', 'L': '긴', 'T': '이야기형', 'C': '텍스트형', 'F': '객관적', 'I': '분석적', 'N': '비판적', 'P': '우호적' };
+    const nicknames = { 'STFN': '팩트 현실주의자', 'LCIP': '심층 분석가', 'STFP': '열정적 소식통', 'LCIN': '심층 비평가' };
+
+    // 1. 상단 타이틀 업데이트 (유저 성향 데이터가 있을 때만 실행)
+    if (nptiResult && titleArea) {
+        const nickname = nicknames[nptiResult] || '나만의 뉴스 탐험가';
+        titleArea.innerHTML = `
+            <div class="npti-title-wrapper">
+                <div class="npti-main-line">
+                    <span class="npti-code" style="color:#FF6B00;">${nptiResult}</span> 
+                    <span class="npti-nickname">${nickname}</span>
+                </div>
+                <div class="tags">
+                    <div class="tag-text">
+                        ${nptiResult.split('').map(char => `<span><b class="point">${char}</b> - ${descMap[char]}</span>`).join('')}
+                    </div>
+                </div>
+            </div>`;
+
+        if (typeof initSlider === 'function') {
+            initSlider('all');
+        }
+    }
+
+    // 2. [수정 완료] 하단 영역 동기화 (결과 유무와 상관없이 항상 실행)
+    if (bottomBadges && bottomTagText) {
+
+        // [중요] nptiResult가 있을 때만 반전된 성향으로 세팅
+        // 로그아웃 상태(null)라면 위에서 선언한 기본값(['L','C','I','P'])을 그대로 사용함
+        if (nptiResult) {
+            const oppositeChars = nptiResult.split('').map(char => oppositeMap[char]);
+            currentSelection = [...oppositeChars];
+        }
+
+        // [1순위] 기사 그리드 생성 (currentSelection 기반으로 제목 일치 보장)
+        initGrid('all');
+
+        // [2순위] 하단 텍스트 및 배지 UI 주입
+        bottomTagText.innerHTML = currentSelection.map((char, idx) => `
+            <span id="desc-${idx}"><strong class="blue">${char}</strong> - ${descMap[char]}</span>`).join('');
+
+        bottomBadges.innerHTML = currentSelection.map((char, idx) => `
+            <span id="badge-${idx}" style="cursor: pointer;">${char}</span>`).join('');
+
+        // [3순위] 이벤트 연결 및 초기 테마 적용 (이 로직이 if문 밖에 있어 무조건 실행됨)
+        currentSelection.forEach((char, idx) => {
+            const badgeEl = document.getElementById(`badge-${idx}`);
+            if (badgeEl) {
+                badgeEl.addEventListener('click', () => toggleSlot(idx));
+                updateDisplay(idx, char);
+            }
         });
     }
 
-    // 조합하기 버튼 이벤트
-    document.getElementById('btn-combine').addEventListener('click', confirmCombination);
+    // 기능별 초기화 실행
+    if (typeof startTicker === 'function') startTicker();
+    if (typeof initSlider === 'function') initSlider('all');
+
+    // 공통 이벤트 리스너 연결
+    document.getElementById('btn-combine')?.addEventListener('click', confirmCombination);
+
+    document.querySelectorAll('.section-lcin .nav-tabs a').forEach(tab => {
+        tab.addEventListener('click', function (e) {
+            e.preventDefault();
+            document.querySelectorAll('.section-lcin .nav-tabs a').forEach(t => t.classList.remove('active'));
+            this.classList.add('active');
+            initGrid(getCategoryFromTab(this));
+        });
+    });
+
+    // [추가] 더보기 버튼 클릭 시 현재 조합된 유형을 curation.html로 전달
+    // const loadMoreBtn = document.querySelector('.btn-load-more');
+
+    // if (loadMoreBtn) {
+    //     loadMoreBtn.addEventListener('click', function (e) {
+    //         // 1. 단순 링크 이동을 방지 (파라미터를 붙여서 이동시키기 위함)
+    //         e.preventDefault();
+
+    //         // 2. 현재 배지로 조합된 4자리 NPTI 코드 추출 (예: "LCIP")
+    //         // 전역 혹은 상위 스코프에 선언된 currentSelection 배열을 활용합니다.
+    //         const finalType = currentSelection.join('');
+
+    //         // 3. 버튼의 href 주소 뒤에 ?type=유형 형식을 붙여서 강제 이동
+    //         // 결과: /view/html/curation.html?type=LCIP
+    //         const baseUrl = this.getAttribute('href') || "/view/html/curation.html";
+    //         location.href = `${baseUrl}?type=${finalType}`;
+    //     });
+    // }
+
 });
 
+// [기능] 하단 뉴스 그리드 생성
+function initGrid(category) {
+    const gridContainer = document.getElementById('news-grid');
+    if (!gridContainer) return;
+    gridContainer.innerHTML = '';
 
-// --- [기능 1] 슬롯 토글 함수 ---
+    const type = currentSelection.join(''); // 현재 배지 상태 합침
+    const catNames = { all: '전체', politics: '정치', economy: '경제', society: '사회', culture: '생활/문화', it: 'IT/과학', world: '세계', sports: '스포츠', enter: '연예', local: '지역' };
+    const categoryName = catNames[category] || '전체';
+
+    for (let i = 1; i <= 9; i++) {
+        const item = document.createElement('a');
+        item.className = 'grid-item';
+        item.href = `/view/html/view.html?id=${type}_${i}`;
+        item.innerHTML = `
+            <div class="grid-thumb"><i class="fa-regular fa-image"></i></div>
+            <h4 class="grid-title">[${type}] 성향에 맞는 ${categoryName} 관련 주요 뉴스 헤드라인 예시 ${i}번 입니다.</h4>
+        `;
+        gridContainer.appendChild(item);
+    }
+}
+
+// [기능] 배지 슬롯 토글
 function toggleSlot(index) {
-    // 현재 해당 슬롯의 값 (예: 'L')
     const currentVal = currentSelection[index];
-    
-    // 이 슬롯의 짝꿍 배열 가져오기 (예: ['L', 'S'])
     const pair = pairs[index];
-    
-    // 현재 값이 짝꿍 중 0번째면 1번째로, 아니면 0번째로 교체
     const nextVal = (currentVal === pair[0]) ? pair[1] : pair[0];
-    
-    // 상태 업데이트
     currentSelection[index] = nextVal;
-    
-    // 화면 다시 그리기
     updateDisplay(index, nextVal);
 }
 
-// --- [기능 2] 화면 업데이트 함수 ---
+// [기능] 화면 업데이트 (색상 및 텍스트)
 function updateDisplay(index, code) {
-    const data = typeDB[code]; // DB에서 정보 가져오기
-    
+    const data = typeDB[code];
     const badgeEl = document.getElementById(`badge-${index}`);
     const descEl = document.getElementById(`desc-${index}`);
-    const bottomTagsContainer = document.querySelector('.section-lcin .tags');
+    if (!badgeEl) return;
 
-    // 1. 뱃지 디자인 변경
+    // 1. 원래 사용자의 진단 결과 가져오기
+    const nptiResult = localStorage.getItem('nptiResult') || "STFN";
+    const originalChar = nptiResult[index];
+    
     badgeEl.innerText = code;
-    if (data.color === 'orange') {
-        badgeEl.style.backgroundColor = '#FF6B00'; // 주황색 배경
-    } else {
-        badgeEl.style.backgroundColor = ''; // 원래 CSS 색(파랑)으로 복귀
-    }
 
-    // 2. 설명 텍스트 변경
-    // 주황색이면 style 적용, 파란색이면 class="blue" 사용
-    const colorHtml = (data.color === 'orange') 
-        ? `<strong style="color: #FF6B00;">${code}</strong>` 
-        : `<strong class="blue">${code}</strong>`;
-        
-    descEl.innerHTML = `${colorHtml} - ${data.text}`;
+    // 2. 색상 결정 로직 
+    // 현재 글자(code)가 원래 성향(originalChar)과 다르면(즉, 추천된 반대 성향이면) 파란색
+    // 현재 글자가 원래 성향과 같으면(즉, 클릭해서 본래 성향으로 돌아왔으면) 주황색
+    const isRecommended = (code !== originalChar);
+    const themeColor = isRecommended ? '#0057FF' : '#FF6B00';
 
-    // 3. tags 컨테이너 배경색 변경 로직
-    if (bottomTagsContainer) {
-        if (data.color === 'orange') {
-            // 주황색 계열일 때 연한 주황 배경 강제 적용
-            bottomTagsContainer.style.setProperty('background-color', '#FFF2EB', 'important');
-        } else {
-            // 파란색 계열일 때 연한 파랑 배경 강제 적용
-            bottomTagsContainer.style.setProperty('background-color', '#e0eaff', 'important');
-        }
+    // 3. UI 적용
+    badgeEl.style.backgroundColor = themeColor;
+    badgeEl.style.color = '#ffffff';
+
+    if (descEl) {
+        descEl.innerHTML = `<strong style="color: ${themeColor}">${code}</strong> - ${data.text}`;
     }
 }
 
-
-// --- [기능 3] 조합 확정 함수 ---
+// [기능] 조합 확정 및 뉴스 갱신
 function confirmCombination() {
-    // 배열을 문자열로 합침 (예: ['S', 'C', 'I', 'N'] -> "SCIN")
     const finalType = currentSelection.join('');
-    
-    // alert(`[조합 완료]\n당신의 NPTI 유형은 "${finalType}" 입니다!`);
-    
-    // 나중에 여기서 DB로 전송 (예: sendToServer(finalType));
-    console.log("선택된 유형:", finalType); 
+    const activeTab = document.querySelector('.section-lcin .nav-tabs a.active');
+    const category = activeTab ? getCategoryFromTab(activeTab) : 'all';
+    initGrid(category); // 하단 그리드 바뀐 유형으로 즉시 갱신
+
+    console.log("선택된 NPTI 유형:", finalType);
 }
 
-// --- [기능4] HTML이 완전히 로딩된 후에 실행하도록 감싸줌 블러처리 해제 ---
+// [헬퍼] 탭 카테고리 추출
+function getCategoryFromTab(tab) {
+    let category = tab.getAttribute('data-category');
+    if (!category) {
+        const text = tab.innerText.trim();
+        const map = { '전체': 'all', '정치': 'politics', '경제': 'economy', '사회': 'society', '생활/문화': 'culture', 'IT/과학': 'it', '세계': 'world', '스포츠': 'sports', '연예': 'enter', '지역': 'local' };
+        category = map[text] || 'all';
+    }
+    return category;
+}
+
+// --- HTML이 완전히 로딩된 후에 실행하도록 감싸줌 블러처리 해제 ---
 document.addEventListener('DOMContentLoaded', () => {
+
+    // 1. 말풍선 업데이트 (안전 호출)
+    if (typeof updateNPTIButton === 'function') updateNPTIButton();
+
     const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
     const hasNPTI = localStorage.getItem('hasNPTI') === 'true'; // 저장된 상태 가져오기
     const blurSection = document.querySelector('.blur-wrapper');
@@ -408,6 +510,100 @@ document.addEventListener('DOMContentLoaded', () => {
         if (bannerOverlay) bannerOverlay.style.display = 'none'; // 배너 숨김
         console.log("진단 완료 확인: 블러가 해제되었습니다.");
     }
+
+
+/* 타이틀 및 하단 조합 영역 통합 업데이트 */
+document.addEventListener('DOMContentLoaded', () => {
+    const nptiResult = localStorage.getItem('nptiResult'); // 예: 'STFN'
+    const titleArea = document.querySelector('.section-pick .title-area');
+    const bottomTagText = document.querySelector('.section-lcin .tag-text');
+    const bottomBadges = document.getElementById('lcin-badges');
+
+    if (nptiResult) {
+        // 1. 공통 데이터 맵
+        const nicknames = {
+            'STFN': '팩트 현실주의자', 'LCIP': '심층 분석가',
+            'STFP': '열정적 소식통', 'LCIN': '심층 비평가'
+        };
+        const descMap = {
+            'S': '짧은', 'L': '긴', 'T': '이야기형', 'C': '텍스트형',
+            'F': '객관적', 'I': '분석적', 'N': '비판적', 'P': '우호적'
+        };
+        const oppositeMap = {
+            'S': 'L', 'L': 'S', 'T': 'C', 'C': 'T',
+            'F': 'I', 'I': 'F', 'N': 'P', 'P': 'N'
+        };
+
+        // 2. 상단 타이틀 업데이트 (유저 성향 그대로 출력)
+        if (titleArea) {
+            const nickname = nicknames[nptiResult] || '나만의 뉴스 탐험가';
+            titleArea.innerHTML = `
+        <div class="npti-title-wrapper">
+            <div class="npti-main-line">
+                <span class="npti-code" style="color:#FF6B00;">${nptiResult}</span> 
+                <span class="npti-nickname">${nickname}</span>
+            </div>
+            <div class="tags">
+                <div class="tag-text">
+                    ${nptiResult.split('').map(char => `<span><b class="point">${char}</b> - ${descMap[char]}</span>`).join('')}
+                </div>
+            </div>
+        </div>`;
+        }
+
+        // 3. [핵심] 하단 영역 업데이트 (반대 성향으로 자동 설정)
+        if (bottomTagText && bottomBadges) {
+            // 결과값을 반대로 변환 (STFN -> LCIP 등)
+            const oppositeChars = nptiResult.split('').map(char => oppositeMap[char]);
+
+            // [중요] 내부 상태 변수를 반대 성향으로 일치시킴 (이게 안 되면 클릭 시 에러 발생)
+            currentSelection = [...oppositeChars];
+
+            // initGrid('all');
+
+            // 하단 텍스트 주입
+            bottomTagText.innerHTML = oppositeChars.map((char, idx) => `
+        <span id="desc-${idx}">
+            <strong class="blue">${char}</strong> - ${descMap[char]}
+        </span>`).join('');
+
+            // 하단 배지 주입 및 스타일 초기화
+            bottomBadges.innerHTML = oppositeChars.map((char, idx) => `
+        <span id="badge-${idx}" style="cursor: pointer;">${char}</span>`).join('');
+
+            // 4. 동적으로 생성된 하단 배지에 클릭 이벤트 연결 및 초기 테마 적용
+            oppositeChars.forEach((char, idx) => {
+                const badgeEl = document.getElementById(`badge-${idx}`);
+                badgeEl?.addEventListener('click', () => toggleSlot(idx));
+                // 초기 화면은 파란색 계열이므로 updateDisplay를 호출해 스타일 확정
+                updateDisplay(idx, char);
+            });
+        }
+    }
+
+});
+
+/* 말풍선 안 내용 추가 및 실행 로직 */
+function updateNPTIButton() {
+    // localStorage에서 진단 완료 여부 확인
+    const hasNPTI = localStorage.getItem('hasNPTI') === 'true';
+    const nptiBtn = document.querySelector('.nav-row .btn-bubble');
+
+    if (!nptiBtn) return;
+
+    if (hasNPTI) {
+        // 진단 완료 시: '더보기'로 텍스트와 링크 변경
+        nptiBtn.innerText = "나의 NPTI 뉴스 더보기";
+        nptiBtn.href = "/view/html/curation.html";
+        nptiBtn.classList.add('npti-done');
+    } else {
+        // 미진단 시: '알아보기'로 유지
+        nptiBtn.innerText = "나의 뉴스 성향 알아보기";
+        nptiBtn.href = "/view/html/test.html";
+        nptiBtn.classList.remove('npti-done');
+    }
+}
+
 
     // NPTI 설명 팝업 로직 (에러 방지 적용)
     const aboutBtn = document.querySelector('.search-bubble');
@@ -447,43 +643,59 @@ document.addEventListener('DOMContentLoaded', () => {
         authLink.onclick = (e) => { e.preventDefault(); toggleModal('logoutModal', true); };
     }
 
-    // 3. 페이지 접근 제어 (보호된 링크)
+    // 3. 페이지 접근 제어 (로그인 + 진단 여부 통합 관리)
     document.querySelectorAll('a[href*="curation.html"], a[href*="mypage.html"], a[href*="test.html"], .icon-btn.user').forEach(link => {
         link.removeAttribute('onclick'); // 기존 HTML의 inline onclick 제거
 
         link.addEventListener('click', (e) => {
             const targetHref = link.getAttribute('href') || "";
 
+            // [관문 1] 로그인이 안 된 경우: 무조건 차단
             if (!isLoggedIn) {
                 e.preventDefault();
-                // [수정] 마이페이지 또는 유저 아이콘 클릭 시 팝업 없이 바로 로그인 이동
                 if (targetHref.includes('mypage.html') || link.classList.contains('user')) {
-                    location.href = '/html/login.html';
+                    location.href = '/view/html/login.html';
                 } else {
-                    // 그 외(테스트 등)는 기존처럼 로그인 유도 팝업 노출
                     toggleModal('loginGuardModal', true);
                 }
+                return;
             }
-            else if (targetHref.includes('curation.html') && !hasNPTI) {
+            // [관문 2] 로그인은 했으나 NPTI 진단이 없는 경우: 큐레이션 관련 접근 차단
+            if (targetHref.includes('curation.html') && !hasNPTI) {
                 e.preventDefault();
                 toggleModal('hasNPTIGuardModal', true);
+                return; // 로직 종료
+            }
+
+            // [관문 3] 모든 조건 통과 (로그인 OK + 진단 OK)
+            // 이때 '조합하기' 버튼(.btn-load-more)을 눌렀다면 파라미터를 붙여 이동시킵니다.
+            if (link.classList.contains('btn-load-more')) {
+                e.preventDefault();
+
+                // 4자리 NPTI 코드 추출 (currentSelection 활용)
+                const finalType = (typeof currentSelection !== 'undefined') ? currentSelection.join('') : "STFN";
+                const baseUrl = targetHref || "/view/html/curation.html";
+
+                console.log("통과 완료 - 조합된 유형으로 이동:", `${baseUrl}?type=${finalType}`);
+                location.href = `${baseUrl}?type=${finalType}`;
             }
             else if (link.classList.contains('user')) {
-                // 로그인 상태에서 유저 아이콘 클릭 시 마이페이지 이동
+                // 유저 아이콘 클릭 시 마이페이지 이동
                 e.preventDefault();
-                location.href = '/html/mypage.html';
+                location.href = '/view/html/mypage.html';
             }
+            // 그 외 일반 링크는 원래 href대로 이동합니다.
         });
     });
 
     // 4. 버튼 이벤트 바인딩 (헬퍼 함수로 간결화)
     const btnMap = {
         'closeLoginGuard': () => toggleModal('loginGuardModal', false),
-        'goToLogin': () => location.href = "/html/login.html",
+        'goToLogin': () => location.href = "/view/html/login.html",
         'closeNPTIGuard': () => toggleModal('hasNPTIGuardModal', false),
-        'goToTest': () => location.href = "/html/test.html",
+        'goToTest': () => location.href = "/view/html/test.html",
         'closeLogout': () => toggleModal('logoutModal', false),
-        'confirmLogout': () => { localStorage.clear(); location.replace("/html/main.html"); }
+        'confirmLogout': () => { localStorage.clear(); location.replace("/view/html/main.html"); }
     };
 
     Object.keys(btnMap).forEach(id => {
@@ -541,69 +753,3 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 });
-
-
-/* 타이틀 교체 및 수정 */
-document.addEventListener('DOMContentLoaded', () => {
-    // 1. 필요한 데이터 및 상태 미리 정의 (에러 방지)
-    const nptiResult = localStorage.getItem('nptiResult');
-    const hasNPTI = localStorage.getItem('hasNPTI') === 'true';
-    const titleArea = document.querySelector('.title-area');
-
-    if (nptiResult && titleArea) {
-        const nicknames = {
-            'STFN': '팩트 현실주의자', 'LCIP': '심층 분석가',
-            'STFP': '열정적 소식통', 'LCIN': '심층 비평가'
-        };
-
-        const descMap = {
-            'S': '짧은', 'L': '긴', 'T': '이야기형', 'C': '텍스트형',
-            'F': '객관적', 'I': '분석적', 'N': '비판적', 'P': '우호적'
-        };
-
-        const nickname = nicknames[nptiResult] || '나만의 뉴스 탐험가';
-
-        // 2. 타이틀 + 태그 바 + 버튼 통합 주입
-        // 백틱(`)과 ${} 문법의 짝을 정확히 맞췄습니다.
-        titleArea.innerHTML = `
-            <div class="npti-title-wrapper">
-                <div class="npti-main-line">
-                    <span class="npti-code">${nptiResult}</span> 
-                    <span class="npti-nickname">${nickname}</span>
-                </div>
-                <div class="tags">
-                    <div class="tag-text">
-                        ${nptiResult.split('').map(char => `
-                            <span><b class="point">${char}</b> - ${descMap[char] || ''}</span>
-                        `).join('')}
-                    </div>
-                </div>
-            </div>
-        `;
-    }
-});
-
-/* 말풍선 안 내용 추가 */
-function updateNPTIButton() {
-    const hasNPTI = localStorage.getItem('hasNPTI') === 'true';
-    const nptiBtn = document.querySelector('.nav-row .btn-bubble'); // 정확한 위치의 버튼 선택
-
-    if (!nptiBtn) return;
-
-    if (hasNPTI) {
-        // 1. 진단 완료 상태
-        nptiBtn.innerText = "나의 NPTI 뉴스 더보기";
-        nptiBtn.href = "/html/curation.html";
-
-        // 빨간 화살표처럼 들여쓰기가 필요하다면 클래스 추가
-        nptiBtn.classList.add('npti-done');
-    } else {
-        // 2. 미진단 상태 (기본값)
-        nptiBtn.innerText = "나의 뉴스 성향 알아보기";
-        nptiBtn.href = "/html/test.html";
-        nptiBtn.classList.remove('npti-done');
-    }
-}
-
-// 페이지 로드 시 실행
-document.addEventListener('DOMContentLoaded', updateNPTIButton);
