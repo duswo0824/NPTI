@@ -65,6 +65,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('goCurationBtn')?.addEventListener('click', () => {
         // 진단 완료 상태를 로컬 스토리지에 저장
         localStorage.setItem('hasNPTI', 'true');
-        location.href = "/html/main.html";
+        location.href = "/view/html/main.html";
     });
 });
