@@ -1,18 +1,19 @@
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
+from starlette.responses import JSONResponse
 from starlette.staticfiles import StaticFiles
 from bigkinds_crawling.scheduler import sch_start
 from bigkinds_crawling.sample import sample_crawling, get_sample
 from logger import Logger
 from typing import Optional
-from bigkinds_crawling.news_raw import news_crawling, get_news_raw
-from bigkinds_crawling.news_aggr_grouping import news_aggr
+from bigkinds_crawling.news_raw import news_crawling, get_news_raw, search_article
+from bigkinds_crawling.news_aggr_grouping import news_aggr, related_news
 from sqlalchemy.orm import Session
 from database import get_db
 from db_index.db_npti_type import get_all_npti_type, get_npti_type_by_group, npti_type_response
 from db_index.db_npti_code import get_all_npti_codes, get_npti_code_by_code, npti_code_response
 from db_index.db_npti_question import get_all_npti_questions, get_npti_questions_by_axis, npti_question_response
-from db_index.db_user_info import UserCreateRequest, insert_user
+from db_index.db_user_info import UserCreateRequest, insert_user, is_duplicate_user_id
 
 app = FastAPI()
 logger = Logger().get_logger(__name__)
@@ -21,6 +22,21 @@ app.mount("/view",StaticFiles(directory="view"), name="view")
 @app.get("/")
 def main():
     return FileResponse("view/html/main.html")
+
+@app.get("/article")
+async def view_page():
+    return FileResponse("view/html/view.html")
+
+@app.get("/article/{news_id}")
+async def get_article(news_id:str):
+    news_info = search_article(news_id)
+    related = related_news(news_info["title"], news_id, news_info["category"])
+    news_info["related_news"] = related
+    print(f"related : {related}")
+    if news_info:
+        return JSONResponse(content=news_info,  status_code=200)
+    else:
+        return JSONResponse(content=None, status_code=404)
 
 
 @app.get("/sample")
@@ -155,3 +171,6 @@ def create_user(req: UserCreateRequest, db: Session = Depends(get_db)):
         logger.error(f"회원가입 오류: user_id={req.user_id}, error={e}")
         return "회원가입 처리 중 오류가 발생했습니다"
 
+@app.get("/users/check_id")
+def check_user_id(user_id: str, db:Session = Depends(get_db)):
+    return {"exists":is_duplicate_user_id(db, user_id)}
