@@ -44,6 +44,7 @@ def ensure_news_raw():
                 "content": {"type": "text", "fields": {"keyword": {"type": "keyword"}}, "analyzer": "korean_whitespace"},
                 "writer": {"type":"text", "analyzer": "korean_whitespace"},
                 "pubdate": {"type": "date", "format": "yyyy-MM-dd"},
+                "pubtime": {"type": "keyword"},
                 "img": {"type":"keyword"},
                 "imgCap": {"type":"keyword"},
                 "timestamp": {"type":"date", "format": "strict_date_optional_time||epoch_millis"},
