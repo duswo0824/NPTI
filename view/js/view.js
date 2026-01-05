@@ -45,6 +45,7 @@ function renderArticle(data){
         originBtn.onclick = function(){
             window.open(data.link,'_blank');
         }
+
     }
     const imgContainer = document.querySelector('div.img-placeholder');
     if (imgContainer && data.img) {
@@ -63,6 +64,7 @@ function initRelatedNews(related_news) {
     const relatedList = document.getElementById('relatedList');
     if (!relatedList) return;
 
+    // 사이드바 뉴스 5개 데이터
     const sideData = [
         { id: "news_1", title: "함께 보면 좋은 뉴스 제목 1번입니다", press: "언론사명", date: "2025-12-31" },
         { id: "news_2", title: "함께 보면 좋은 뉴스 제목 2번입니다", press: "언론사명", date: "2025-12-31" },
@@ -84,3 +86,5 @@ function initRelatedNews(related_news) {
         relatedList.insertAdjacentHTML('beforeend', html);
     });
 }
+
+initRelatedNews();
