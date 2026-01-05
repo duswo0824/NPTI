@@ -95,7 +95,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 localStorage.setItem('isLoggedIn', 'true');
 
                 showAlert(`${inputId}님 환영합니다!`, function () {
-                    window.location.href = '/html/main.html';
+                    window.location.href = '/view/html/main.html';
                 });
             } else {
                 // [실패 시] 파란 글씨 에러 메시지 표시

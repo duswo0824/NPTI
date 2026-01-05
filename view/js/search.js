@@ -65,7 +65,6 @@ document.addEventListener('DOMContentLoaded', function () {
                 <div class="result-count" style="font-size:14px;">검색결과 <span style="color:#ff6b00; font-weight:bold;">${filtered.length}</span>건</div>
                 <div class="sort-tabs" style="display:flex; gap:10px; font-size:14px;">
                     <button type="button" class="sort-btn ${currentSort === 'accuracy' ? 'active' : ''}" data-sort="accuracy" style="color:${currentSort === 'accuracy' ? '#ff6b00' : '#999'}; font-weight:${currentSort === 'accuracy' ? 'bold' : 'normal'}">정확도순</button>
-                    <span style="color:#eee">|</span>
                     <button type="button" class="sort-btn ${currentSort === 'latest' ? 'active' : ''}" data-sort="latest" style="color:${currentSort === 'latest' ? '#ff6b00' : '#999'}; font-weight:${currentSort === 'latest' ? 'bold' : 'normal'}">최신순</button>
                 </div>
             </div>
@@ -87,7 +86,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const resultItem = document.createElement('a');
             resultItem.className = 'result-item';
             // 개별 기사 페이지 view.html로 연결
-            resultItem.href = `view.html?id=${news.id}`;
+            resultItem.href = `/view/html/view.html?id=${news.id}`;
 
             resultItem.innerHTML = `
                 <div class="result-info">

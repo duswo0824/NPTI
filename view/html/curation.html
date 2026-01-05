@@ -52,32 +52,40 @@
                 <a href="#" data-category="culture">생활/문화</a>
                 <a href="#" data-category="it">IT/과학</a>
                 <a href="#" data-category="world">세계</a>
+                <a href="#" data-category="sports">스포츠</a>
+                <a href="#" data-category="enter">연예</a>
+                <a href="#" data-category="local">지역</a>
             </nav>
         </section>
 
         <section class="news-feed-section">
-            <div class="feed-title-row">
-                <h2 id="categoryName">전체</h2>
-                <div class="sort-box">정확도순 <i class="fa-solid fa-caret-down"></i></div>
+            <div class="search-sort-container">
+                <div class="feed-title-row">
+                    <h2 id="categoryName">전체</h2>
+                    <div class="sort-tabs">
+                        <button type="button" class="sort-btn active" data-sort="accuracy">정확도순</button>
+                        <button type="button" class="sort-btn" data-sort="latest">최신순</button>
+                    </div>
+                </div>
             </div>
 
             <div id="curationList" class="curation-list">
             </div>
 
-            <div class="pagination">
-                <button class="p-arrow"><i class="fa-solid fa-angles-left"></i></button>
-                <button class="p-arrow"><i class="fa-solid fa-angle-left"></i></button>
-                <div class="p-numbers">
-                    <span class="active">1</span>
-                    <span>2</span>
-                    <span>3</span>
-                    <span>4</span>
-                    <span>5</span>
-                </div>
-                <button class="p-arrow"><i class="fa-solid fa-angle-right"></i></button>
-                <button class="p-arrow"><i class="fa-solid fa-angles-right"></i></button>
-            </div>
+            <div id="paginationContainer" class="pagination"></div>
         </section>
+
+        <!-- 팝업 -->
+        <div id="logoutModal" class="modal-overlay">
+            <div class="modal-box">
+                <p class="modal-message">정말 로그아웃 하시겠습니까?</p>
+                <div class="modal-btn-group">
+                    <button id="closeLogout" class="btn-cancel">취소</button>
+                    <button id="confirmLogout" class="btn-confirm">확인</button>
+                </div>
+            </div>
+        </div>
+
     </main>
 
     <script src="/view/js/main.js"></script>

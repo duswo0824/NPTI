@@ -203,7 +203,7 @@ document.addEventListener('DOMContentLoaded', function () {
             if (submitBtn.disabled) return;
 
             showAlert('회원가입이 완료되었습니다!\n로그인 페이지로 이동합니다.', function () {
-                window.location.href = 'login.html';
+                window.location.href = '/view/html/login.html';
             });
         });
     }

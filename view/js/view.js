@@ -86,7 +86,7 @@ function initRelatedNews() {
     relatedList.innerHTML = '';
     sideData.forEach(item => {
         const html = `
-            <a href="view.html?id=${item.id}" class="related-item">
+            <a href="/view/html/view.html?id=${item.id}" class="related-item">
                 <div class="related-text">
                     <h4>${item.title}</h4>
                     <div class="related-info"><span>${item.press}</span> | <span>${item.date}</span></div>
@@ -115,7 +115,7 @@ function initRelatedNews() {
     sideData.forEach(item => {
         // [수정] a 태그를 사용하여 href에 경로와 id를 넣음
         const html = `
-            <a href="view.html?id=${item.id}" class="related-item">
+            <a href="/view/html/view.html?id=${item.id}" class="related-item">
                 <div class="related-text">
                     <h4>${item.title}</h4>
                     <div class="related-info">
