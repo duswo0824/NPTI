@@ -1,4 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException, Query
+from starlette.responses import RedirectResponse
+from starlette.staticfiles import StaticFiles
 from bigkinds_crawling.scheduler import sch_start
 from bigkinds_crawling.sample import sample_crawling, get_sample
 from logger import Logger
@@ -14,6 +16,11 @@ from db_index.db_user_info import UserCreateRequest, insert_user
 
 app = FastAPI()
 logger = Logger().get_logger(__name__)
+app.mount("/view",StaticFiles(directory="view"), name="view")
+
+@app.get("/")
+def main():
+    return RedirectResponse(url="view/html/main.html")
 
 
 @app.get("/sample")
