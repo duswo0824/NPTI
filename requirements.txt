@@ -27,6 +27,7 @@ Korpora
 
 # 머신러닝
 scikit-learn
+xgboost
 
 # 시각화
 matplotlib
