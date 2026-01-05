@@ -93,3 +93,24 @@ def insert_user(db: Session, params: dict):
     """)
 
     db.execute(sql, params)
+
+# 로그인 검증
+def verify_user_login(db: Session, user_id: str, user_pw: str):
+    hashed_pw = hashlib.sha256(user_pw.encode()).hexdigest()
+
+    sql = text("""
+        SELECT
+            user_id,
+            user_name,
+            activation
+        FROM user_info
+        WHERE user_id = :user_id
+          AND user_pw = :user_pw
+          AND activation = true
+        LIMIT 1
+    """)
+
+    return db.execute(sql, {
+        "user_id": user_id,
+        "user_pw": hashed_pw
+    }).mappings().first()
