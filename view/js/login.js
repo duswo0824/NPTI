@@ -1,3 +1,4 @@
+//커밋 가능
 document.addEventListener('DOMContentLoaded', function () {
 
     // 요소들 가져오기
@@ -81,7 +82,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const DB_USER = { id: 'admin', pw: '1234' };
 
     if (loginForm) {
-        loginForm.addEventListener('submit', function (e) {
+        loginForm.addEventListener('submit', async function (e) {
             e.preventDefault();
 
             // 만약 버튼이 비활성 상태라면 전송 막음 (이중 안전장치)
@@ -90,14 +91,31 @@ document.addEventListener('DOMContentLoaded', function () {
             const inputId = idInput.value;
             const inputPw = pwInput.value;
 
-            if (inputId === DB_USER.id && inputPw === DB_USER.pw) {
+            try {
+                const res = await fetch('/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        user_id: inputId,
+                        user_pw: inputPw
+                    })
+                });
+
+                if (!res.ok) {
+                    throw new Error('아이디 또는 비밀번호가 일치하지 않습니다.');
+                }
+
+                const data = await res.json();
                 // 성공 시 브라우저에 로그인 상태 저장
                 localStorage.setItem('isLoggedIn', 'true');
+                localStorage.setItem('user_id', inputId);
 
                 showAlert(`${inputId}님 환영합니다!`, function () {
                     window.location.href = '/view/html/main.html';
                 });
-            } else {
+            } catch (err) {
                 // [실패 시] 파란 글씨 에러 메시지 표시
                 errorMessage.classList.add('show');
                 document.getElementById('userid').value = '';
