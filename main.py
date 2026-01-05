@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException, Query
-from starlette.responses import RedirectResponse
+from fastapi.responses import FileResponse
 from starlette.staticfiles import StaticFiles
 from bigkinds_crawling.scheduler import sch_start
 from bigkinds_crawling.sample import sample_crawling, get_sample
@@ -20,7 +20,7 @@ app.mount("/view",StaticFiles(directory="view"), name="view")
 
 @app.get("/")
 def main():
-    return RedirectResponse(url="view/html/main.html")
+    return FileResponse("view/html/main.html")
 
 
 @app.get("/sample")
