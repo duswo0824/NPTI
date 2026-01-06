@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, Query
+from fastapi import FastAPI, Depends, Query
 from fastapi.responses import FileResponse
 from starlette.staticfiles import StaticFiles
 from bigkinds_crawling.scheduler import sch_start
@@ -13,6 +13,8 @@ from db_index.db_npti_type import get_all_npti_type, get_npti_type_by_group, npt
 from db_index.db_npti_code import get_all_npti_codes, get_npti_code_by_code, npti_code_response
 from db_index.db_npti_question import get_all_npti_questions, get_npti_questions_by_axis, npti_question_response
 from db_index.db_user_info import UserCreateRequest, insert_user
+from sqlalchemy import text
+import hashlib
 
 app = FastAPI()
 logger = Logger().get_logger(__name__)
@@ -142,16 +144,110 @@ def npti_question_by_axis(axis: str = Query(...), db: Session = Depends(get_db))
 # 가입용
 @app.post("/users")
 def create_user(req: UserCreateRequest, db: Session = Depends(get_db)):
-
     try:
         insert_user(db, req.model_dump())
         db.commit()
-
         logger.info(f"회원가입 성공: {req.user_id}")
-        return "회원가입에 성공했습니다"
+        return {"success": True, "msg": "회원가입에 성공했습니다"}
 
     except Exception as e:
         db.rollback()
-        logger.error(f"회원가입 오류: user_id={req.user_id}, error={e}")
-        return "회원가입 처리 중 오류가 발생했습니다"
+        logger.error(f"회원가입 오류: {e}")
+        return {"success": False, "msg": "회원가입 처리 중 오류가 발생했습니다"}
 
+# 로그인
+def verify_password(raw_pw: str, hashed_pw: str) -> bool:
+    return hashlib.sha256(raw_pw.encode()).hexdigest() == hashed_pw
+
+
+
+@app.get("/users/check-id")
+def check_user_id(user_id: str, db: Session = Depends(get_db)):
+    sql = """
+        SELECT 1
+        FROM user_info
+        WHERE user_id = :user_id
+        LIMIT 1
+    """
+    exists = db.execute(text(sql), {"user_id": user_id}).first() is not None
+    return {"exists": exists}
+
+@app.post("/login")
+def login(req: dict, db: Session = Depends(get_db)):
+    user_id = req.get("user_id")
+    user_pw = req.get("user_pw")
+
+    sql = """
+        SELECT user_id, user_pw, activation
+        FROM user_info
+        WHERE user_id = :user_id
+    """
+    user = db.execute(text(sql), {"user_id": user_id}).fetchone()
+
+    if not user:
+        return {"success": False, "msg": "아이디 또는 비밀번호 오류"}
+
+    if not user.activation:
+        return {"success": False, "msg": "비활성화된 계정입니다"}
+
+    if not verify_password(user_pw, user.user_pw):
+        return {"success": False, "msg": "아이디 또는 비밀번호 오류"}
+
+    logger.info(f"[LOGIN SUCCESS] {user_id}")
+    return {"success": True, "msg": "login success"}
+
+@app.get("/api/about")
+def get_about(db: Session = Depends(get_db)):
+
+    # 1. NPTI 기준 (npti_type)
+    type_rows = db.execute("""
+        SELECT npti_group, npti_type, npti_kor
+        FROM npti_type
+        ORDER BY npti_group, npti_type
+    """).fetchall()
+
+    grouped = {}
+    for r in type_rows:
+        grouped.setdefault(r.npti_group, []).append(r)
+
+    criteria = []
+    for group, items in grouped.items():
+        if len(items) == 2:
+            left, right = items
+            criteria.append({
+                "group": group,
+                "title": group.capitalize(),
+                "left": f"{left.npti_type} - {left.npti_kor}",
+                "right": f"{right.npti_type} - {right.npti_kor}"
+            })
+
+    # 2. NPTI 성향 (npti_code)
+    code_rows = db.execute("""
+        SELECT npti_code, type_nick, type_de,
+               length_type, article_type, info_type, view_type
+        FROM npti_code
+        ORDER BY npti_code
+    """).fetchall()
+
+    guides = []
+    for r in code_rows:
+        guides.append({
+            "code": r.npti_code,
+            "name": r.type_nick,
+            "desc": r.type_de,
+            "types": [
+                r.length_type,
+                r.article_type,
+                r.info_type,
+                r.view_type
+            ]
+        })
+
+    return {
+        "intro": {
+            "title": "NPTI란?",
+            "content": "NPTI는 뉴스 소비 성향을 분석해 개인에게 맞는 뉴스 경험을 제공하는 지표입니다."
+        },
+        "criteria": criteria,
+        "guides": guides
+    }
