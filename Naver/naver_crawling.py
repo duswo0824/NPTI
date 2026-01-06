@@ -144,7 +144,7 @@ def get_article_detail(url, category_name):
             # 시간 추출
             time_match = re.search(r"(오전|오후)\s*(\d{1,2}):(\d{2})(?::(\d{2}))?", text_date)
             if time_match:
-                ampm, h, m = time_match.groups()
+                ampm, h, m, *_ = time_match.groups()
                 h = int(h)
                 if ampm == "오후" and h != 12:
                     h += 12
@@ -248,7 +248,6 @@ def get_sports_article_detail(url, category_name):
             # 예: "2025.12.19. 오전 10:16"
 
             # 날짜 추출
-
             date_match = re.search(r"(\d{4})\.(\d{1,2})\.(\d{1,2})", text_date)
             if date_match:
                 y, m, d = date_match.groups()
@@ -257,7 +256,7 @@ def get_sports_article_detail(url, category_name):
             # 시간 추출
             time_match = re.search(r"(오전|오후)\s*(\d{1,2}):(\d{2})(?::(\d{2}))?", text_date)
             if time_match:
-                ampm, h, m = time_match.groups()
+                ampm, h, m, *_ = time_match.groups()
                 h = int(h)
                 if ampm == "오후" and h != 12:
                     h += 12
