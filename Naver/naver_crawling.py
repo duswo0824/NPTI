@@ -144,7 +144,7 @@ def get_article_detail(url, category_name):
             # 시간 추출
             time_match = re.search(r"(오전|오후)\s*(\d{1,2}):(\d{2})(?::(\d{2}))?", text_date)
             if time_match:
-                ampm, h, m = time_match.groups()
+                ampm, h, m, *_ = time_match.groups()
                 h = int(h)
                 if ampm == "오후" and h != 12:
                     h += 12
@@ -163,6 +163,7 @@ def get_article_detail(url, category_name):
             category = "생활/문화"
 
         # 5. 언론사
+        media = None
         media_tag = soup.select_one("span.media_end_head_top_logo_text") or soup.select_one(
             "img.media_end_head_top_logo_img")
         if media_tag:
@@ -247,7 +248,6 @@ def get_sports_article_detail(url, category_name):
             # 예: "2025.12.19. 오전 10:16"
 
             # 날짜 추출
-
             date_match = re.search(r"(\d{4})\.(\d{1,2})\.(\d{1,2})", text_date)
             if date_match:
                 y, m, d = date_match.groups()
@@ -256,7 +256,7 @@ def get_sports_article_detail(url, category_name):
             # 시간 추출
             time_match = re.search(r"(오전|오후)\s*(\d{1,2}):(\d{2})(?::(\d{2}))?", text_date)
             if time_match:
-                ampm, h, m = time_match.groups()
+                ampm, h, m, *_ = time_match.groups()
                 h = int(h)
                 if ampm == "오후" and h != 12:
                     h += 12
@@ -347,11 +347,11 @@ async def process_article(item, cat_name, kiwi, sem):
                 "content": content,
                 "content_tokens": token["content_tokens"],
                 "link": detail.get("URL"),
-                "media": detail.get("media", "").replace('\\', ''),
+                "media": (detail.get("media") or "").replace('\\', ''),
                 "pubdate": detail.get("pubdate"),
                 "pubtime": detail.get("pubtime"),
                 "category": detail.get("category"),
-                "writer": detail.get("writer", "").replace('\\', ''),
+                "writer": (detail.get("writer") or "").replace('\\', ''),
                 "img": detail.get("imgURL"),
                 "imgCap": detail.get("imgCap"),
                 "timestamp": datetime.now(timezone(timedelta(hours=9))).isoformat(timespec='seconds')
@@ -613,8 +613,8 @@ def crawling_sports_news(driver):
                         "title_tokens": token["title_tokens"],
                         "content": detail.get("content", ""),
                         "content_tokens": token["content_tokens"],
-                        "writer": detail.get("writer", "").replace('\\', ''),
-                        "media": detail.get("media", "").replace('\\', ''),
+                        "writer": (detail.get("writer") or "").replace('\\', ''),
+                        "media": (detail.get("media") or "").replace('\\', ''),
                         "pubdate": detail.get("pubdate"),
                         "pubtime": detail.get("pubtime"),
                         "category": "스포츠",
@@ -748,8 +748,8 @@ def crawling_enter_news(driver):
                         "title_tokens": token["title_tokens"],
                         "content": detail.get("content", ""),
                         "content_tokens": token["content_tokens"],
-                        "writer": detail.get("writer", "").replace('\\', ''),
-                        "media": detail.get("media", "").replace('\\', ''),
+                        "writer": (detail.get("writer") or "").replace('\\', ''),
+                        "media": (detail.get("media") or "").replace('\\', ''),
                         "pubdate": detail.get("pubdate"),
                         "pubtime": detail.get("pubtime"),
                         "category": "연예",
