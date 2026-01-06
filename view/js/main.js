@@ -508,7 +508,7 @@ function setupGlobalEvents(isLoggedIn, hasNPTI) {
                 e.preventDefault();
                 // 마이페이지나 유저 아이콘은 로그인 페이지로 바로 이동
                 if (targetHref.includes('mypage.html') || link.classList.contains('user')) {
-                    location.href = '/view/html/login.html';
+                    location.href = '/login';
                 } else {
                     toggleModal('loginGuardModal', true);
                 }
@@ -539,7 +539,7 @@ function setupGlobalEvents(isLoggedIn, hasNPTI) {
 
     // (6) 모달 내부 버튼 이벤트 바인딩
     document.getElementById('closeLoginGuard')?.addEventListener('click', () => toggleModal('loginGuardModal', false));
-    document.getElementById('goToLogin')?.addEventListener('click', () => location.href = "/view/html/login.html");
+    document.getElementById('goToLogin')?.addEventListener('click', () => location.href = "/login");
     document.getElementById('closeNPTIGuard')?.addEventListener('click', () => toggleModal('hasNPTIGuardModal', false));
     document.getElementById('goToTest')?.addEventListener('click', () => location.href = "/view/html/test.html");
     document.getElementById('closeLogout')?.addEventListener('click', () => toggleModal('logoutModal', false));

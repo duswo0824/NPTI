@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Depends, Query
 from fastapi.responses import FileResponse
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, RedirectResponse
 from starlette.staticfiles import StaticFiles
 from bigkinds_crawling.scheduler import sch_start
 from bigkinds_crawling.sample import sample_crawling, get_sample
@@ -237,18 +237,18 @@ def npti_question_by_axis(axis: str = Query(...), db: Session = Depends(get_db))
         logger.error(f"실행 중 오류 발생: {e}")
 
 # 가입용
-@app.post("/users")
-def create_user(req: UserCreateRequest, db: Session = Depends(get_db)):
-    try:
-        insert_user(db, req.model_dump())
-        db.commit()
-        logger.info(f"회원가입 성공: {req.user_id}")
-        return {"success": True, "msg": "회원가입에 성공했습니다"}
+@app.get("/signup")
+async def get_signup_page():
+    # 사용자가 /signup 주소로 들어오면 html 파일을 보여줍니다.
+    return FileResponse("view/html/signup.html")
 
-    except Exception as e:
-        db.rollback()
-        logger.error(f"회원가입 오류: {e}")
-        return {"success": False, "msg": "회원가입 처리 중 오류가 발생했습니다"}
+# 2. [POST] 회원가입 데이터 처리하기
+@app.post("/signup")
+def create_user(req: UserCreateRequest, db: Session = Depends(get_db)):
+    # DB에 사용자 저장
+    insert_user(db, req.model_dump())
+    db.commit()
+    return RedirectResponse(url="/login")
 
 @app.get("/users/check-id")
 def check_user_id(user_id: str, db: Session = Depends(get_db)):
@@ -264,6 +264,10 @@ def check_user_id(user_id: str, db: Session = Depends(get_db)):
 # 로그인
 def verify_password(raw_pw: str, hashed_pw: str) -> bool:
     return hashlib.sha256(raw_pw.encode()).hexdigest() == hashed_pw
+
+@app.get("/login")
+def page_login():
+    return FileResponse("view/html/login.html")
 
 @app.post("/login")
 def login(req: dict, db: Session = Depends(get_db)):

@@ -112,7 +112,7 @@ document.addEventListener('DOMContentLoaded', function () {
             localStorage.setItem('user_id', idInput.value);
 
             showAlert(`${idInput.value}님 환영합니다!`, () => {
-                window.location.href = '/view/html/main.html';
+                window.location.href = '/';
             });
 
         } catch (err) {
