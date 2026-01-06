@@ -6,7 +6,6 @@ document.addEventListener('DOMContentLoaded', function () {
     } else {
         alert("잘못된 접근입니다.");
     }
-    initRelatedNews();
 });
 
 function loadArticleData(news_id){
@@ -64,15 +63,6 @@ function initRelatedNews(related_news) {
     const relatedList = document.getElementById('relatedList');
     if (!relatedList) return;
 
-    // 사이드바 뉴스 5개 데이터
-    const sideData = [
-        { id: "news_1", title: "함께 보면 좋은 뉴스 제목 1번입니다", press: "언론사명", date: "2025-12-31" },
-        { id: "news_2", title: "함께 보면 좋은 뉴스 제목 2번입니다", press: "언론사명", date: "2025-12-31" },
-        { id: "news_3", title: "함께 보면 좋은 뉴스 제목 3번입니다", press: "언론사명", date: "2025-12-31" },
-        { id: "news_4", title: "함께 보면 좋은 뉴스 제목 4번입니다", press: "언론사명", date: "2025-12-31" },
-        { id: "news_5", title: "함께 보면 좋은 뉴스 제목 5번입니다", press: "언론사명", date: "2025-12-31" }
-    ];
-
     relatedList.innerHTML = '';
     related_news.forEach(item => {
         const html = `
@@ -86,5 +76,3 @@ function initRelatedNews(related_news) {
         relatedList.insertAdjacentHTML('beforeend', html);
     });
 }
-
-initRelatedNews();
