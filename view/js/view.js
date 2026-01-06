@@ -175,7 +175,7 @@ function userBehavior(intervalMs = 100) {
             distTarget: distance.toFixed(2) // 타겟과의 거리 (소수점 2자리)
         };
 
-        // TODO: 여기서 데이터를 배열에 push하거나 서버로 전송----------------------------------------
+        // 데이터를 배열에 넣어서 전송하는 로직 필요 ----------------------------------------------
         console.log("Data:", dataSnapshot);
 
     }, intervalMs);
