@@ -175,6 +175,40 @@ def news_crawling(max_pages: int):
 
     return total_samples
 
+def search_article(news_id:str):
+    body = {
+        "query": {
+            "bool":{
+                "filter":[
+                    {"term":{"news_id":news_id}},
+                ]
+            }
+        }
+    }
+    try :
+        res = es.search(index=ES_INDEX, body=body)
+        hits = res["hits"]["hits"]
+        if len(hits)>0:
+            src = hits[0]["_source"]
+        news_info = {
+            "news_id":src.get("news_id", ""),
+            "title":src.get("title", ""),
+            "content":src.get("content", ""),
+            "writer":src.get("writer", ""),
+            "tag":src.get("tag", ""),
+            "media":src.get("media", ""),
+            "link":src.get("link", ""),
+            "category":src.get("category", ""),
+            "pubdate":src.get("pubdate", ""),
+            "img":src.get("img",""),
+            "imgCap":src.get("imgCap",""),
+            "timestamp":src.get("timestamp", ""),
+        }
+        return news_info
+    except Exception as e:
+        logger.error(f"{news_id}에 해당하는 기사가 없습니다 : {e}")
+        return None
+
 
 def get_news_raw(q: Optional[str] = None):
 

@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NPTI - 마이페이지</title>
+    <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <link rel="stylesheet" href="/view/css/main.css">
+    <link rel="stylesheet" href="/view/css/about.css">
+</head>
+
+<body>
+    <header class="header">
+        <div class="header-inner container">
+            <div class="header-left">
+                <a href="/view/html/about.html" class="search-bubble">
+                    <span class="icon-circle"><i class="fa-solid fa-magnifying-glass"></i></span>
+                    <span class="text">"NPTI가 궁금하다면? 지금 클릭"</span>
+                </a>
+            </div>
+            <div class="header-center">
+                <a href="/view/html/main.html" class="logo">
+                    <h1>NPTI</h1>
+                </a>
+                <p>News Personality Type Indicator</p>
+            </div>
+            <div class="header-right">
+                <a href="/view/html/login.html" class="login-link" id="authLink">로그인/회원가입</a>
+                <div class="icons">
+                    <button class="icon-btn search" onclick="location.href='/view/html/search.html'"><i
+                            class="fa-solid fa-magnifying-glass"></i></button>
+                    <button class="icon-btn user" onclick="location.href='/view/html/mypage.html'"><i
+                            class="fa-regular fa-user"></i></button>
+                </div>
+            </div>
+        </div>
+        <div class="divider"></div>
+    </header>
+    <main>
+
+        
+
+
+        <!-- 팝업 -->
+        <div id="logoutModal" class="modal-overlay">
+            <div class="modal-box">
+                <p class="modal-message">정말 로그아웃 하시겠습니까?</p>
+                <div class="modal-btn-group">
+                    <button id="closeLogout" class="btn-cancel">취소</button>
+                    <button id="confirmLogout" class="btn-confirm">확인</button>
+                </div>
+            </div>
+        </div>
+
+    </main>
+    <script src="/view/js/main.js"></script>
+    <script src="/view/js/mypage.js"></script>
+    
+
+</body>
+</html>
