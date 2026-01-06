@@ -15,6 +15,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 from elasticsearch import Elasticsearch
 from elasticsearch import NotFoundError
+import re
 
 
 from elasticsearch_index.es_err_crawling import index_error_log
@@ -130,23 +131,26 @@ def get_article_detail(url, category_name):
         pubtime = None
 
         if date_tag:
-            raw_date = date_tag.get("data-date-time")
-            if raw_date:  # raw_date 예시: "2023-10-27 14:30:01"
-                date_parts = raw_date.split(" ")
-                if len(date_parts) == 2:
-                    pubdate = date_parts[0]
-                    pubtime = date_parts[1]
-            else:
-                # 2순위: 속성이 없을 경우 텍스트 직접 파싱 (예외 방식)
-                # 예: "2025.12.19. 오전 10:16"
-                text_date = date_tag.get_text(strip=True)
+            text_date = date_tag.get_text(strip=True)
+            # 예: "2025.12.19. 오전 10:16"
 
-                # 마침표와 공백을 기준으로 분리
-                parts = text_date.replace("..", ".").split(". ")
-                if len(parts) >= 3:
-                    # 연-월-일 형식을 맞추기 위해 zfill(2) 사용 (예: 1 -> 01)
-                    pubdate = f"{parts[0]}-{parts[1].zfill(2)}-{parts[2].zfill(2)}"
-                    pubtime = parts[3] if len(parts) > 3 else None
+            # 날짜 추출
+
+            date_match = re.search(r"(\d{4})\.(\d{1,2})\.(\d{1,2})", text_date)
+            if date_match:
+                y, m, d = date_match.groups()
+                pubdate = f"{y}-{m.zfill(2)}-{d.zfill(2)}"
+
+            # 시간 추출
+            time_match = re.search(r"(오전|오후)\s*(\d{1,2}):(\d{2})(?::(\d{2}))?", text_date)
+            if time_match:
+                ampm, h, m = time_match.groups()
+                h = int(h)
+                if ampm == "오후" and h != 12:
+                    h += 12
+                if ampm == "오전" and h == 12:
+                    h = 0
+                pubtime = f"{str(h).zfill(2)}:{m}"
 
         # 3. 기자명
         writer_tag = soup.select_one("span.byline_s") or soup.select_one("em.media_end_head_journalist_name")
@@ -235,17 +239,30 @@ def get_sports_article_detail(url, category_name):
 
         # 날짜 추출
         date_tag = soup.select_one("em.date")
-        pubdate, pubtime = None, None
+        pubdate = None
+        pubtime = None
+
         if date_tag:
-            text_date = date_tag.get_text(strip=True)  # 예: "2025.12.19. 오전 10:16"
-            parts = text_date.split()
-            if len(parts) >= 1:
-                date_str = parts[0].rstrip('.')
-                d_parts = date_str.split('.')
-                if len(d_parts) == 3:
-                    pubdate = f"{d_parts[0]}-{d_parts[1].zfill(2)}-{d_parts[2].zfill(2)}"
-            if len(parts) >= 2:
-                pubtime = " ".join(parts[1:])
+            text_date = date_tag.get_text(strip=True)
+            # 예: "2025.12.19. 오전 10:16"
+
+            # 날짜 추출
+
+            date_match = re.search(r"(\d{4})\.(\d{1,2})\.(\d{1,2})", text_date)
+            if date_match:
+                y, m, d = date_match.groups()
+                pubdate = f"{y}-{m.zfill(2)}-{d.zfill(2)}"
+
+            # 시간 추출
+            time_match = re.search(r"(오전|오후)\s*(\d{1,2}):(\d{2})(?::(\d{2}))?", text_date)
+            if time_match:
+                ampm, h, m = time_match.groups()
+                h = int(h)
+                if ampm == "오후" and h != 12:
+                    h += 12
+                if ampm == "오전" and h == 12:
+                    h = 0
+                pubtime = f"{str(h).zfill(2)}:{m}"
 
         # 기자명 추출
         writer_tag = soup.select_one("em[class*='JournalistCard_name']")
