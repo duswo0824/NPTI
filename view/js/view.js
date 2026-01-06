@@ -5,13 +5,14 @@ document.addEventListener('DOMContentLoaded', function () {
     const news_id = params.get('news_id');
     if (news_id) {
         loadArticleData(news_id);
-        // --------------------------------------------------
+        // -------------------------------------------------------------------
         // 로그인 확인 로직
         // 로그인 되어 있으면 유저 행동 수집 로직 실행
     } else {
         alert("잘못된 접근입니다.");
     }
 });
+
 
 // request에 대한 response 확인 -> 기사 원문 가져오기 -> 관련 기사가 있으면 관련 기사 가져오기
 function loadArticleData(news_id){
@@ -34,6 +35,7 @@ function loadArticleData(news_id){
             alert("기사 내용을 불러올 수 없습니다.")
         });
 }
+
 
 // 기사 원문 보여주기 (링크 있으면 원문 버튼 & 이미지 있으면 보여줌, 없으면 생략)
 function renderArticle(data){
@@ -61,8 +63,8 @@ function renderArticle(data){
     }
     const copyrightText = `이 기사의 저작권은 ${data.media || '해당 언론사'}에 있으며, 이를 무단으로 이용할 경우 법적 책임을 질 수 있습니다.`
     document.getElementById('viewCopyright').innerText = copyrightText;
-
 }
+
 
 // 관련 기사 보여주기
 function initRelatedNews(related_news) {
@@ -82,71 +84,137 @@ function initRelatedNews(related_news) {
         relatedList.insertAdjacentHTML('beforeend', html);
     });
 }
-// #---------------------------------------------------------------------------
 
-function userBehavior(){
-    let mouseData = []; // 마우스 좌표 (x, y, timestamp)
-    let scrollData = []; // 스크롤 위치 (scrollY, timestamp)
-    let lastMouseTime = 0; // 스로틀링을 위한 마지막 기록 시간
-    let lastScrollTime = 0; // 스로틀링을 위한 마지막 기록 시간
-    const SAMPLING_RATE = 100; // 0.2초마다 데이터 수집 (서버 부하 및 데이터 크기 조절)
 
-    // 1. MouseMove 이벤트 리스너
-    document.addEventListener('mousemove', function(e) {
-        const now = Date.now();
-        // 설정한 시간 간격(100ms)보다 지났을 때만 기록
-        if (now - lastMouseTime > SAMPLING_RATE) {
-            mouseData.push({
-                x: e.clientX, // 브라우저 창 기준 X 좌표
-                y: e.clientY, // 브라우저 창 기준 Y 좌표
-                t: now        // 타임스탬프
-            });
-            lastMouseTime = now;
+// 누적마우스X,Y & 누적스크롤Y & 현재페이지X,Y & baseline3 & timestamp 수집
+// 유저 행동 데이터 수집---------------------------------------------------------------------------
+function userBehavior(intervalMs = 100) {
+    // 변수 정의
+    const state = {
+        currentX: 0, // 현재 마우스 X,Y
+        currentY: 0,
+        cumulativeX: 0, // 누적 마우스 X,Y
+        cumulativeY: 0, 
+        lastX: null,    // 직전 위치 (누적 계산용)
+        lastY: null,
+
+        scrollTop: window.scrollY || window.pageYOffset, // 현재 스크롤 위치
+        cumulativeScrollY: 0,                            // 누적 스크롤 이동 거리
+        lastScrollTop: window.scrollY || window.pageYOffset // 직전 스크롤 위치 (초기값은 현재 위치)
+    };
+    const targetDiv = document.getElementById('viewBody') // 
+    const isPageActive = () => {
+        return !document.hidden && document.hasFocus();
+    };
+    const handleMouseMove = (e) => {
+        if (!isPageActive()) return; // 페이지가 안 보이면 업데이트도 안 함 (성능 절약)
+        const x = e.pageX; // 현재마우스X,Y
+        const y = e.pageY;
+        state.currentX = x; 
+        state.currentY = y; 
+        if (state.lastX !== null && state.lastY !==null){
+            state.cumulativeX += Math.abs(x - state.lastX); // 누적마우스X,Y
+            state.cumulativeY += Math.abs(y - state.lastY);
         }
-    });
+        state.lastX = x;
+        state.lastY = y;
+    };
+    const handleScroll = () => {
+        if (!isPageActive()) return;
 
-    // 2. Scroll 이벤트 리스너
-    document.addEventListener('scroll', function() {
-        const now = Date.now();
-        if (now - lastScrollTime > SAMPLING_RATE) {
-            scrollData.push({
-                y: window.scrollY, // 세로 스크롤 위치
-                pct: getScrollPercentage(), // 스크롤 백분율 (전체 문서 중 어디쯤인지)
-                t: now
-            });
-            lastScrollTime = now;
+        // 현재 스크롤 위치 가져오기 (크로스 브라우징 지원)
+        const currentScrollY = window.scrollY || window.pageYOffset || document.documentElement.scrollTop;
+        
+        state.scrollTop = currentScrollY; // 현재 위치 갱신
+
+        // 누적 스크롤 계산
+        if (state.lastScrollTop !== null) {
+            const delta = Math.abs(currentScrollY - state.lastScrollTop);
+            state.cumulativeScrollY += delta;
         }
-    });
 
-    // (보조 함수) 스크롤 백분율 계산
-    function getScrollPercentage() {
-        const scrollTop = window.scrollY;
-        const docHeight = document.body.scrollHeight - window.innerHeight;
-        if (docHeight <= 0) return 0;
-        return Math.round((scrollTop / docHeight) * 100);
-    }
+        state.lastScrollTop = currentScrollY;
+    };
 
-    // 3. 데이터 전송 (페이지를 떠날 때)
-    // 'beforeunload'는 사용자가 탭을 닫거나 다른 페이지로 이동하기 직전에 발생합니다.
-    window.addEventListener('beforeunload', function() {
-        const params = new URLSearchParams(window.location.search);
-        const news_id = params.get('news_id');
+    // 전역 리스너 등록
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('scroll', handleScroll);
 
-        // 수집된 데이터 패키징
-        const payload = {
-            news_id: news_id,
-            session_id: "user_session_123", // 실제 구현 시 쿠키나 로컬스토리지의 세션 ID 사용
-            start_time: mouseData.length > 0 ? mouseData[0].t : Date.now(),
-            end_time: Date.now(),
-            mouse_events: mouseData,
-            scroll_events: scrollData,
-            // 체류 시간 (초 단위)
-            dwell_time: (Date.now() - (mouseData.length > 0 ? mouseData[0].t : Date.now())) / 1000
+    // 주기적 데이터 수집 (Interval)
+    const timerId = setInterval(() => {
+        if (!isPageActive()) {
+            return; 
+        }
+
+        // 타겟과의 거리 계산 ----------------------------------------------------------
+        let distance = -1;
+        if (targetDiv) {
+            const rect = targetDiv.getBoundingClientRect();
+            // getBoundingClientRect는 뷰포트 기준이므로 scroll 값을 더해줘야 pageX/Y와 매칭됨
+            const scrollX = window.scrollX || window.pageXOffset;
+            const scrollY = window.scrollY || window.pageYOffset;
+
+            const divCenterX = rect.left + scrollX + (rect.width / 2);
+            const divCenterY = rect.top + scrollY + (rect.height / 2);
+
+            // 유클리드 거리 계산 -------------------------------------------------------------
+            distance = Math.sqrt(
+                Math.pow(state.currentX - divCenterX, 2) + 
+                Math.pow(state.currentY - divCenterY, 2)
+            );
+        }
+
+        // 최종 데이터 패키징
+        const dataSnapshot = {
+            timestamp: new Date().toISOString(),
+            mouseX: state.currentX,         // 현재 X
+            mouseY: state.currentY,         // 현재 Y
+            accX: state.cumulativeX,        // 누적 X
+            accY: state.cumulativeY,        // 누적 Y
+            accScrollY: state.cumulativeScrollY, // 누적 스크롤 Y
+            distTarget: distance.toFixed(2) // 타겟과의 거리 (소수점 2자리)
         };
 
-        // 데이터 전송: sendBeacon 사용 권장 (페이지가 닫혀도 전송 보장)
-        // 데이터는 JSON 문자열로 변환하여 전송
-        const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
-        navigator.sendBeacon('/log/behavior', blob);
-    });
+        // TODO: 여기서 데이터를 배열에 push하거나 서버로 전송----------------------------------------
+        console.log("Data:", dataSnapshot);
+
+    }, intervalMs);
+
+
+    // 5. 클린업 함수 반환 (수집 종료 시 호출)
+    return {
+        stop: () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('scroll', handleScroll);
+            clearInterval(timerId);
+            console.log("데이터 수집이 종료되었습니다.");
+        }
+    };
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
