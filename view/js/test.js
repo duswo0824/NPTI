@@ -3,8 +3,8 @@ document.addEventListener('DOMContentLoaded', function () {
     const questionList = document.getElementById('questionList');
     const nptiForm = document.getElementById('nptiForm');
 
-    // 12개 질문 데이터 (예시)
-    const questions = [
+    // 12개 질문 데이터 (예시) - 삭제
+    /*const questions = [
         "짧고 핵심만 정리된 기사가 더 편하게 느껴진다.",
         "객관적 사실과 데이터를 중심으로 정리된 기사를 더 신뢰한다.",
         "사건·사실만 나열된 기사는 지루하게 느껴진다.",
@@ -17,7 +17,7 @@ document.addEventListener('DOMContentLoaded', function () {
         "어떤 일이 일어났는지만 간단히 정리해 준 기사면 충분하다고 생각한다.",
         "기업이나 정부를 칭찬하는 기사보다 비판하는 기사에 더 끌린다.",
         "한 문단 안에 결론이 나오는 기사를 더 선호한다."
-    ];
+    ];*/
 
     // 1. 셔플(Shuffle) 함수 추가
     function shuffleArray(array) {
@@ -31,10 +31,10 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // 질문 리스트 섞기
-    const shuffledQuestions = shuffleArray([...questions])
+    /*const shuffledQuestions = shuffleArray([...questions])*/
 
     // 2. 질문 생성 (섞인 리스트로 순회)
-    shuffledQuestions.forEach((q, index) => {
+    /*shuffledQuestions.forEach((q, index) => {
         const qHtml = `
             <div class="q-card">
                 <p class="q-title">Q${index + 1}. ${q}</p>
@@ -51,8 +51,44 @@ document.addEventListener('DOMContentLoaded', function () {
             </div>
         `;
         questionList.insertAdjacentHTML('beforeend', qHtml);
-    });
+    });*/
 
+    //서버에서 질문 가져오기 - 추가
+    fetch('/npti/questions')
+        .then(res => res.json())
+        .then(data => {
+            const shuffled = shuffleArray([...data]); // 서버 질문 셔플
+            renderQuestions(shuffled);                // 질문 생성
+        })
+        .catch(err => {
+            console.error('질문 로딩 실패:', err);
+        });
+    // 질문 생성 (서버 데이터 기반)
+    function renderQuestions(questions) {
+        questions.forEach((q, index) => {
+            const qHtml = `
+                <div class="q-card">
+                    <p class="q-title">Q${index + 1}. ${q.question_text}</p>
+                    <div class="options-group">
+                        <span class="option-label">매우 그렇지 않다</span>
+                        ${[1, 2, 3, 4, 5].map(num => `
+                            <div class="option-item">
+                                <input type="radio" //수정
+                                        name="${q.question_id}"
+                                        value="${num}"
+                                        required
+                                        data-axis="${q.npti_axis}"
+                                        data-rate="${q.score_rate}">
+                                <span class="option-num">${num}</span>
+                            </div>
+                        `).join('')}
+                        <span class="option-label">매우 그렇다</span>
+                    </div>
+                </div>
+            `;
+            questionList.insertAdjacentHTML('beforeend', qHtml);
+        });
+    }
     // 제출 이벤트
     nptiForm.addEventListener('submit', function (e) {
         e.preventDefault();

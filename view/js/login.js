@@ -78,51 +78,46 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // ★ 가짜 DB 정보
-    const DB_USER = { id: 'admin', pw: '1234' };
+   /* =========================================
+   [기능 4] 로그인 요청 (최종 정리본)
+   ========================================= */
+    loginForm.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        if (submitBtn.disabled) return;
 
-    if (loginForm) {
-        loginForm.addEventListener('submit', async function (e) {
-            e.preventDefault();
+        try {
+            const res = await fetch('/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    user_id: idInput.value,
+                    user_pw: pwInput.value
+                })
+            });
 
-            // 만약 버튼이 비활성 상태라면 전송 막음 (이중 안전장치)
-            if (submitBtn.disabled) return;
+            const data = await res.json();
 
-            const inputId = idInput.value;
-            const inputPw = pwInput.value;
-
-            try {
-                const res = await fetch('/login', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        user_id: inputId,
-                        user_pw: inputPw
-                    })
-                });
-
-                if (!res.ok) {
-                    throw new Error('아이디 또는 비밀번호가 일치하지 않습니다.');
-                }
-
-                const data = await res.json();
-                // 성공 시 브라우저에 로그인 상태 저장
-                localStorage.setItem('isLoggedIn', 'true');
-                localStorage.setItem('user_id', inputId);
-
-                showAlert(`${inputId}님 환영합니다!`, function () {
-                    window.location.href = '/view/html/main.html';
-                });
-            } catch (err) {
-                // [실패 시] 파란 글씨 에러 메시지 표시
+            // 로그인 실패
+            if (!data.success) {
                 errorMessage.classList.add('show');
-                document.getElementById('userid').value = '';
-                document.getElementById('userpw').value = '';
-                document.getElementById('userid').focus();
-                checkInputValidity(); // 비밀번호 지웠으니 버튼 다시 비활성화
+                idInput.value = '';
+                pwInput.value = '';
+                idInput.focus();
+                checkInputValidity();
+                return;
             }
-        });
-    }
+
+            // 로그인 성공
+            localStorage.setItem('isLoggedIn', 'true');
+            localStorage.setItem('user_id', idInput.value);
+
+            showAlert(`${idInput.value}님 환영합니다!`, () => {
+                window.location.href = '/view/html/main.html';
+            });
+
+        } catch (err) {
+            showAlert('서버와 통신 중 오류가 발생했습니다.');
+        }
+    });
+    checkInputValidity();
 });
