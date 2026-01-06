@@ -1,23 +1,22 @@
-import sys
-import os
+import sys, os, re, time
 sys.path.append(os.path.dirname(os.path.abspath(os.path.dirname(__file__))))
 
+import pandas as pd
+from datetime import datetime, timezone, timedelta
+
 from logger import Logger
-import time
 from elasticsearch import Elasticsearch, helpers
-from sqlalchemy import Column, String, DateTime, ForeignKey
+from sqlalchemy import Column, String, DateTime
 from sqlalchemy.sql import func
 from database import Base, get_engine, SessionLocal
-import pandas as pd
+
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
-from datetime import datetime, timezone, timedelta
 from sklearn.metrics import classification_report, accuracy_score
 from sklearn.ensemble import VotingClassifier
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.linear_model import LogisticRegression
 from lightgbm import LGBMClassifier
-from sklearn.multioutput import MultiOutputClassifier
 
 logger = Logger().get_logger(__name__)
 
@@ -64,220 +63,251 @@ def err_article(news_id, error_message):
         logger.error(f"[기사 NPTI 분류] ES 에러 로그 저장 중 추가 오류 발생: {e}")
 
 # ==========================================================================================
-df_full = pd.read_csv(r'D:\PROJECT\Project_team3\LLM_test\LLM_results\TEST_DATA_v1.csv')
-df = df_full.dropna(subset=['content', 'final_article_type', 'final_information_type', 'final_viewpoint_type'])
+# F/I 분류용 사전 및 tokenizer
+FACTUAL_VERBS = {
+    '말하다','밝히다','전하다','설명하다','주장하다','전해지다'
+}
 
-# X: 입력 데이터 (기사 본문), y: 타겟 데이터 (3가지 라벨)
-X = df['content']
-y = df[['final_article_type', 'final_information_type', 'final_viewpoint_type']]
+FACT_PATTERNS = {
+    "에 따르면","전해졌다","밝혔다","확인됐다","발생했다","조사 결과","경찰은","검찰은","소방은","당국은","관계자는"
+}
 
-# 데이터 분할 (학습용 80%, 테스트용 20%)
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42, stratify=y['final_article_type']
+INSIGHT_KEYWORDS = {
+    "의미","맥락","관점","해석","배경","평가",
+    "논란","쟁점","문제","시사점","함의",
+    "우려","비판","반박","옹호","핵심","본질","원인","영향","파장"
+}
+
+def tokenizer_fi(text: str):
+    tokens = re.findall(r"[가-힣]{2,}", text)
+    result = []
+
+    text_has_fact_pattern = any(p in text for p in FACT_PATTERNS)
+    for t in tokens:
+        # Insight 키워드는 유지
+        if t in INSIGHT_KEYWORDS:
+            result.append(t)
+        # Fact 패턴이 있는 기사라면
+        # FACTUAL_VERBS도 제거하지 않고 유지
+        elif text_has_fact_pattern:
+            result.append(t)
+        # Fact 패턴 없고, 서술 동사면 제거
+        elif t in FACTUAL_VERBS:
+            continue
+        else:
+            result.append(t)
+
+    return result
+
+
+# TF-IDF(분류별)
+tfidf_ct = TfidfVectorizer(
+    ngram_range=(1, 2),
+    max_features=15000,
+    min_df=3,
+    max_df=0.9
 )
 
-# TF-IDF 벡터화
-# 데이터 양이 9,000개 수준이므로 max_features를 15,000으로 설정하여 충분한 어휘력 확보
-tfidf = TfidfVectorizer(
+tfidf_fi = TfidfVectorizer(
+    tokenizer=tokenizer_fi,
+    token_pattern=None,
     ngram_range=(1, 3),
     max_features=20000,
-    min_df=3,         # 너무 희귀한 오타 등은 제외
-    max_df=0.9        # 모든 기사에 나오는 너무 흔한 단어 제외
-)
-X_train_tfidf = tfidf.fit_transform(X_train)
-X_test_tfidf = tfidf.transform(X_test)
-
-# 개별 모델 정의
-clf1 = MultinomialNB(alpha=0.1)
-clf2 = LogisticRegression(class_weight='balanced', max_iter=1000)
-clf3 = LGBMClassifier(class_weight='balanced', random_state=42)
-
-# 앙상블 모델 생성 (Soft Voting)
-voting_clf = VotingClassifier(
-    estimators=[('nb', clf1), ('lr', clf2), ('lgbm', clf3)],
-    voting='soft'  # 확률 기반 투표
+    min_df=3,
+    max_df=0.9
 )
 
-model = MultiOutputClassifier(voting_clf)
-start_time = time.time()
-logger.info("앙상블 모델 학습 시작!!!!!!")
+tfidf_pn = TfidfVectorizer(
+    ngram_range=(1, 3),
+    max_features=15000,
+    min_df=3,
+    max_df=0.9
+)
 
-model.fit(X_train_tfidf.toarray(), y_train)
-end_time = time.time()
-elapsed_time = end_time - start_time
-logger.info(f"학습 완료 - 학습시간: {elapsed_time}")
+# 앙상블 모델 생성 함수
+def build_model():
+    return VotingClassifier(
+        estimators=[
+            ("nb", MultinomialNB(alpha=0.1)),
+            ("lr", LogisticRegression(class_weight="balanced", max_iter=1000)),
+            ("lgbm", LGBMClassifier(class_weight="balanced", random_state=42))
+        ],
+        voting="soft"
+    )
+model_ct = build_model()
+model_fi = build_model()
+model_pn = build_model()
 
-# accuracy 확인
-def get_model_accuracy(y_test, predictions):
-    target_names = ['구조(C/T)', '내용(F/I)', '논조(P/N)']
-    total_f1 = 0
+# 데이터 로드
+df = pd.read_csv(r"D:\PROJECT\Project_team3\LLM_test\LLM_results\TRAIN_DATA_v2.csv")
+df = df.dropna(subset=["content","final_article_type","final_information_type","final_viewpoint_type"])
 
-    # predictions는 2차원 배열이므로 각 열을 순회합니다.
-    for i in range(len(target_names)):
-        # i번째 열만 추출하여 비교
-        y_true_col = y_test.iloc[:, i]
-        y_pred_col = predictions[:, i]
+X = df["content"]
+y_ct = df["final_article_type"]
+y_fi = df["final_information_type"]
+y_pn = df["final_viewpoint_type"]
 
-        # 정확도(Accuracy) 계산
-        acc = accuracy_score(y_true_col, y_pred_col)
-        # 상세 리포트(F1-score 포함)
-        report_dict = classification_report(y_true_col, y_pred_col, output_dict=True)
-        report_text = classification_report(y_true_col, y_pred_col)
-        # 각 타겟의 weighted avg f1-score를 합산
-        total_f1 += report_dict['weighted avg']['f1-score']
+X_tr, X_te, y_ct_tr, y_ct_te, y_fi_tr, y_fi_te, y_pn_tr, y_pn_te = train_test_split(
+    X, y_ct, y_fi, y_pn, test_size=0.2, random_state=42, stratify=y_ct
+)
 
-        logger.info(f"정확도(Accuracy): {acc:.4f}")
-        logger.info(f'F1-score: {report_text}')
+# Vectorize
+X_ct_tr = tfidf_ct.fit_transform(X_tr)
+X_fi_tr = tfidf_fi.fit_transform(X_tr)
+X_pn_tr = tfidf_pn.fit_transform(X_tr)
 
-    return total_f1 / len(target_names)
+# 모델 학습
+logger.info("[article_type] 학습 시작")
+t = time.time()
+model_ct.fit(X_ct_tr, y_ct_tr)
+logger.info(f"[article_type] 완료 ({time.time()-t:.2f}s)")
 
-# 성능 측정 및 점수 저장
-predictions = model.predict(X_test_tfidf.toarray())
-avg_f1_score = get_model_accuracy(y_test, predictions)
+logger.info("[info_type] 학습 시작 (n-gram)")
+t = time.time()
+model_fi.fit(X_fi_tr, y_fi_tr)
+logger.info(f"[info_type] 완료 ({time.time()-t:.2f}s)")
+
+logger.info("[view_type] 학습 시작")
+t = time.time()
+model_pn.fit(X_pn_tr, y_pn_tr)
+logger.info(f"[view_type] 완료 ({time.time()-t:.2f}s)")
 
 
+# Accuracy 평가
+def evaluate_model(name, model, vectorizer, X_test, y_test):
+    """
+    name        : 'CT', 'FI', 'PN'
+    model       : 해당 타겟 모델
+    vectorizer  : 해당 타겟 TF-IDF
+    X_test      : 테스트 본문
+    y_test      : 테스트 라벨
+    """
+    X_vec = vectorizer.transform(X_test)
+    preds = model.predict(X_vec)
+
+    acc = accuracy_score(y_test, preds)
+    report = classification_report(y_test, preds)
+
+    logger.info(f"[{name}] Accuracy: {acc:.4f}")
+    logger.info(f"{report}")
+
+    return acc
+
+acc_CT = evaluate_model("CT", model_ct, tfidf_ct, X_te, y_ct_te)
+acc_FI = evaluate_model("FI", model_fi, tfidf_fi, X_te, y_fi_te)
+acc_PN = evaluate_model("PN", model_pn, tfidf_pn, X_te, y_pn_te)
+
+# NPTI 라벨링 함수
 def classify_npti():
-    add_db()  # 테이블 생성 확인
+    add_db()
     db = SessionLocal()
+
     try:
-        # DB에 이미 존재하는 news_id 목록 가져오기
+        logger.info("===== NPTI 배치 분류 시작 =====")
+        logger.info(
+            f"[MODEL ACCURACY] "
+            f"article_type: {acc_CT:.2%} | "
+            f"info_type: {acc_FI:.2%} | "
+            f"view_type: {acc_PN:.2%}"
+        )
+
         existing_ids = set(row[0] for row in db.query(ArticlesNPTI.news_id).all())
         logger.info(f"현재 DB에 등록된 기사 수: {len(existing_ids)}건")
-        # ES에서 전체 기사 탐색
-        query = {
-            "query": {"match_all": {}},  # 전체를 보되 아래 로직에서 필터링
-            "_source": ["content"]
-        }
-        rows = helpers.scan(es, index=ES_INDEX, query=query)
+
+        rows = helpers.scan(
+            es,
+            index=ES_INDEX,
+            query={"query": {"match_all": {}}, "_source": ["content"]}
+        )
 
         count = 0
-        logger.info("신규 기사 NPTI 분류 프로세스 시작")
-
         for row in rows:
-            news_id = row['_id']
-            # DB에 이미 있는 news_id라면 건너뛰기
+            news_id = row["_id"]
             if news_id in existing_ids:
                 continue
 
-            content = row['_source'].get('content', '')
-            if not content: continue
+            content = row["_source"].get("content", "")
+            if not content:
+                continue
 
             try:
-                # Length 분류
-                length_type = 'L' if len(content) >= 800 else 'S'
+                # 길이
+                length_type = "L" if len(content) >= 800 else "S"
 
-                # 2. 모델 예측 (구조, 내용, 논조)
-                # 학습된 tfidf와 model 객체를 직접 사용합니다.
-                content_tfidf = tfidf.transform([content])
-                pred = model.predict(content_tfidf)[0]  # 결과 예: ['C', 'F', 'P']
+                # 예측
+                ct = model_ct.predict(tfidf_ct.transform([content]))[0]
+                fi = model_fi.predict(tfidf_fi.transform([content]))[0]
+                pn = model_pn.predict(tfidf_pn.transform([content]))[0]
 
-                article_type = pred[0]
-                info_type = pred[1]
-                view_type = pred[2]
+                npti_code = length_type + ct + fi + pn
 
-                # 3. NPTI 코드 생성
-                combined_code = length_type + article_type + info_type + view_type
-
-                # 4. DB 객체 생성 및 저장
-                npti_record = ArticlesNPTI(
+                record = ArticlesNPTI(
                     news_id=news_id,
                     length_type=length_type,
-                    article_type=article_type,
-                    info_type=info_type,
-                    view_type=view_type,
-                    NPTI_code=combined_code,
+                    article_type=ct,
+                    info_type=fi,
+                    view_type=pn,
+                    NPTI_code=npti_code,
                     updated_at=datetime.now(timezone(timedelta(hours=9)))
                 )
-                db.merge(npti_record)
+
+                db.merge(record)
                 count += 1
 
                 if count % 100 == 0:
                     db.commit()
-                    logger.info(f"현재 {count}건 처리 중")
+                    logger.info(f"{count}건 처리 중-----------------------")
+
             except Exception as e:
-                logger.info(f'[기사 NPTI 분류]-[ {news_id} ] 에러: {e}')
+                logger.error(f"[기사 NPTI 분류 실패] news_id={news_id} / {e}")
                 err_article(news_id, e)
                 continue
 
         db.commit()
-        logger.info(f"========== 최종 {count}건 - 기사 NPTI분류 및 DB 저장 완료 ==========")
+        logger.info(f"최종 {count}건 기사 NPTI 분류 완료")
+        logger.info(f"article_type:{acc_CT:.2%}, info_type:{acc_FI:.2%}, view_type:{acc_PN:.2%} =====")
 
     except Exception as e:
-        logger.error(f"통합 NPTI 분류 처리 중 오류 발생: {e}")
+        logger.error(f"전체 분류 프로세스 오류: {e}")
         db.rollback()
+
     finally:
         db.close()
 
 
-# ==================================================================================
-# TEST 기사 예측 함수
-def predict_new_article(text):
-    # TF-IDF 변환
-    text_tfidf = tfidf.transform([text])
-    X_input = pd.DataFrame(text_tfidf.toarray(), columns=tfidf.get_feature_names_out())
-    # 예측
-    pred = model.predict(X_input)[0]
+# =========== TEST용 ==========
+def test_article(text: str):
+    length_type = "L" if len(text) >= 800 else "S"
 
-    try:
-        probs = model.predict_proba(X_input)
-        # 각 타겟(구조, 내용, 논조)별로 가장 높은 확률값 추출
-        confidences = [max(p[0]) for p in probs]
-        conf_str = f"(확신도 - 구조: {confidences[0]:.1%}, 내용: {confidences[1]:.1%}, 논조: {confidences[2]:.1%})"
-    except Exception as e:
-        conf_str = f"(확신도 계산 제외: {e})"
+    # CT
+    ct_vec = tfidf_ct.transform([text])
+    ct_pred = model_ct.predict(ct_vec)[0]
+    ct_conf = model_ct.predict_proba(ct_vec)[0].max()
 
-    logger.info(f'기사 NPTI 분류 모델 평균 신뢰도: {avg_f1_score:.2%}')
-    logger.info(f"[예측 결과] - 구조: {pred[0]} / 내용: {pred[1]} / 논조: {pred[2]}")
-    if conf_str:
-        logger.info(conf_str)
+    # FI
+    fi_vec = tfidf_fi.transform([text])
+    fi_pred = model_fi.predict(fi_vec)[0]
+    fi_conf = model_fi.predict_proba(fi_vec)[0].max()
 
+    # PN
+    pn_vec = tfidf_pn.transform([text])
+    pn_pred = model_pn.predict(pn_vec)[0]
+    pn_conf = model_pn.predict_proba(pn_vec)[0].max()
 
-# ==================================================================================
-import numpy as np
+    npti = length_type + ct_pred + fi_pred + pn_pred
 
+    logger.info(
+        f"[article_type] confidence: {ct_pred} | confidence: {ct_conf:.2%} | model_acc: {acc_CT:.2%}"
+    )
+    logger.info(
+        f"[info_type] confidence: {fi_pred} | confidence: {fi_conf:.2%} | model_acc: {acc_FI:.2%}"
+    )
+    logger.info(
+        f"[view_type] confidence: {pn_pred} | confidence: {pn_conf:.2%} | model_acc: {acc_PN:.2%}"
+    )
+    logger.info(f"NPTI CODE: {npti}")
 
-def analyze_feature_importance(target_idx=1):
-    """
-    target_idx: 0(구조), 1(내용), 2(논조)
-    """
-    target_names = ['구조(C/T)', '내용(F/I)', '논조(P/N)']
-    logger.info(f"--- {target_names[target_idx]} 분류에 영향을 주는 상위 단어 분석 ---")
-
-    # 1. MultiOutputClassifier에서 해당 타겟의 VotingClassifier 추출
-    target_voting_clf = model.estimators_[target_idx]
-
-    # 2. VotingClassifier 내부에 학습된 개별 모델 리스트에서 'lr' (Logistic Regression) 찾기
-    # 학습 후에는 'named_estimators_' 속성을 사용하는 것이 가장 안전합니다.
-    if 'lr' in target_voting_clf.named_estimators_:
-        lr_model = target_voting_clf.named_estimators_['lr']
-    else:
-        logger.error("로지스틱 회귀 모델(lr)을 찾을 수 없습니다.")
-        return
-
-    # 3. TF-IDF 단어 이름 가져오기
-    feature_names = tfidf.get_feature_names_out()
-
-    # 4. 가중치(Coefficients) 추출 (로지스틱 회귀는 1차원 배열로 가중치를 가짐)
-    coefs = lr_model.coef_[0]
-
-    # 5. 가중치 순으로 정렬
-    # 값이 클수록 Insight(I)에 가깝고, 작을수록(음수) Fact(F)에 가깝습니다.
-    top_indices = np.argsort(coefs)[-20:][::-1]
-    bottom_indices = np.argsort(coefs)[:20]
-
-    print(f"\n[ {target_names[target_idx]} - Insight(I)로 분류하게 만드는 단어 TOP 20 ]")
-    print("-" * 50)
-    for idx in top_indices:
-        print(f"{feature_names[idx]:<20} : {coefs[idx]:.4f}")
-
-    print(f"\n[ {target_names[target_idx]} - Fact(F)로 분류하게 만드는 단어 TOP 20 ]")
-    print("-" * 50)
-    for idx in bottom_indices:
-        print(f"{feature_names[idx]:<20} : {coefs[idx]:.4f}")
-
-
-# 내용(F/I) 분석 실행
-analyze_feature_importance(1)
+    return npti
 
 
 # ==================================================================================
@@ -339,9 +369,8 @@ A씨는 “화장실을 무료로 이용했다는 이유로 출구를 몸으로 
 
 
 카페 사장은 A씨가 ‘감금이나 강요죄’라고 언급한 데 대해 “어느 부분에서 감금죄까지 운운하며 오히려 고소하겠다고 하는지 이해가 되지 않는다”고 했다.
-
     """
 
-    predict_new_article(sample_text)
+    test_article(sample_text)
 
 
