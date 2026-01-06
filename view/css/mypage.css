@@ -71,7 +71,7 @@ main {
     top: 25px;
     right: 0;
     background: #fff;
-    border: 1px solid #eee;
+    border: 1px solid var(--border);
     border-radius: 8px;
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
     z-index: 100;
@@ -135,7 +135,6 @@ main {
 /* 3. 프로필 편집 버튼 */
 .form-submit {
     text-align: center;
-    margin-bottom: 60px;
 }
 
 .btn-edit-profile {
@@ -201,4 +200,205 @@ main {
     justify-content: center;
     align-items: center;
     z-index: 9999;
+}
+
+
+/* NPTI 진단 결과 섹션 (result.css 스타일 반영) */
+
+.result-container {
+    width: 100%;
+    padding: 10px 0 40px;
+    text-align: center;
+    /* border-top: 1px solid var(--border); 마이페이지 폼과 구분 */
+
+}
+
+/* 유저 정보 및 결과 타이틀 */
+.user-info {
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 20px;
+    border-bottom: 2px solid var(--border);
+    padding-bottom: 8px;
+    display: block;
+    max-width: 650px;
+    margin-left: auto;
+    margin-right: auto;
+    text-align: left;
+}
+
+.user-info .highlight {
+    color: var(--orange);
+}
+
+.result-title-group h2 {
+    font-size: 36px;
+    color: var(--orange);
+    font-weight: 900;
+    letter-spacing: 2px;
+}
+
+.result-title-group p {
+    font-size: 16px;
+    font-weight: 700;
+    margin-top: 10px;
+    color: #333;
+}
+
+/* 요약 박스 */
+.result-summary-box {
+    border: 1.5px solid var(--orange);
+    border-radius: 16px;
+    padding: 30px;
+    margin: 40px auto;
+    max-width: 650px;
+    line-height: 1.8;
+    background-color: #fff;
+    text-align: center;
+}
+
+.result-summary-box p {
+    font-size: 18px;
+    color: #444;
+}
+
+/* 차트 컨테이너 */
+.chart-container {
+    max-width: 650px;
+    margin: 0 auto;
+    border: 1.5px solid var(--orange);
+    border-radius: 16px;
+    padding: 50px 60px 20px;
+}
+
+.chart-item {
+    margin-bottom: 40px;
+}
+
+.chart-labels {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    font-size: 14px;
+    color: #333;
+}
+
+.chart-labels b {
+    color: #ff6b00;
+}
+
+.type-title {
+    font-weight: 600;
+    font-size: 16px;
+    color: #000;
+}
+
+/* 차트 바 레이아웃 */
+.chart-bar-area {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.progress-track {
+    flex: 1;
+    height: 32px;
+    background: #f0f0f0;
+    border-radius: 4px;
+    position: relative;
+    overflow: hidden;
+}
+
+/* 바 색상 및 애니메이션 */
+.orange-bar,
+.orange-bar-right {
+    height: 100%;
+    background: var(--orange);
+    width: 0;
+    transition: width 1.5s cubic-bezier(0.1, 0.5, 0.5, 1);
+}
+
+.orange-bar-right {
+    float: right;
+}
+
+/* 알파벳 폰트 스타일 */
+.char-left,
+.char-right {
+    font-size: 28px;
+    font-weight: 900;
+    color: #111;
+    min-width: 30px;
+    text-align: center;
+    transition: color 0.5s ease;
+}
+
+/* 강조된 알파벳 (JS에서 추가) */
+.char-highlight {
+    color: var(--orange) !important;
+}
+
+/* 버튼 스타일 */
+.btn-main-news {
+    background: var(--orange);
+    color: #fff;
+    padding: 10px 30px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    width: auto;
+    cursor: pointer;
+    margin-top: 30px;
+}
+
+/* NPTI 업데이트 설명 팝업 스타일 */
+.npti-update-tooltip {
+    display: none;
+    position: absolute;
+    bottom: 50%;
+    left: 100%;
+    transform: translateX(-50%);
+    width: 350px;
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    text-align: left;
+    z-index: 1000;
+}
+
+.npti-update-tooltip h3 {
+    color: var(--orange);
+    font-size: 18px;
+    margin-bottom: 15px;
+}
+
+.npti-update-tooltip p {
+    font-size: 13px;
+    line-height: 1.6;
+    color: #444;
+    margin-bottom: 10px;
+}
+
+.npti-update-tooltip ul {
+    margin: 10px 0;
+    padding-left: 15px;
+}
+
+.npti-update-tooltip li {
+    font-size: 13px;
+    color: #333;
+    margin-bottom: 5px;
+    list-style: disc;
+}
+
+.tooltip-footer {
+    margin-top: 15px;
+    padding-top: 10px;
+    border-top: 1px solid #eee;
+    font-size: 13px;
+    color: var(--orange);
 }

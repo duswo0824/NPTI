@@ -48,6 +48,7 @@
         </div>
         <div class="divider"></div>
     </header>
+
     <main>
         <section class="profile-header">
             <div class="profile-main-info">
@@ -92,7 +93,100 @@
                 <button type="button" class="btn-edit-profile" id="btnEditToggle" onclick="location.href='/view/html/profile-edit.html'">프로필 편집</button>
             </div>
         </section>
-    
+
+        <section id="nptiResultSection" class="result-container container" style="display: none;">
+            <div class="user-info">
+                <span id="resUserName">사용자</span> 님의 <span class="highlight">NPTI 유형</span>
+            </div>
+        
+            <div class="result-title-group">
+                <h2 id="nptiCode"></h2>
+                <p id="nptiName"></p>
+            </div>
+        
+            <div class="result-summary-box" id="resultSummary"></div>
+        
+            <div class="chart-container">
+                <div class="chart-item">
+                    <div class="chart-labels">
+                        <span class="label-left">짧은 기사 <b id="score-S">0%</b></span>
+                        <span class="type-title">Length Type</span>
+                        <span class="label-right"><b id="score-L">0%</b> 긴 기사</span>
+                    </div>
+                    <div class="chart-bar-area">
+                        <span class="char-left" id="char-S">S</span>
+                        <div class="progress-track" id="track-Length">
+                            <div class="progress-bar" id="barLength"></div>
+                        </div>
+                        <span class="char-right" id="char-L">L</span>
+                    </div>
+                </div>
+        
+                <div class="chart-item">
+                    <div class="chart-labels">
+                        <span class="label-left">텍스트 중심 <b id="score-C">0%</b></span>
+                        <span class="type-title">Article Type</span>
+                        <span class="label-right"><b id="score-T">0%</b> 이야기형</span>
+                    </div>
+                    <div class="chart-bar-area">
+                        <span class="char-left" id="char-C">C</span>
+                        <div class="progress-track" id="track-Article">
+                            <div class="progress-bar" id="barArticle"></div>
+                        </div>
+                        <span class="char-right" id="char-T">T</span>
+                    </div>
+                </div>
+        
+                <div class="chart-item">
+                    <div class="chart-labels">
+                        <span class="label-left">객관적 기사 <b id="score-F">0%</b></span>
+                        <span class="type-title">Information Type</span>
+                        <span class="label-right"><b id="score-I">0%</b> 분석 기사</span>
+                    </div>
+                    <div class="chart-bar-area">
+                        <span class="char-left" id="char-F">F</span>
+                        <div class="progress-track" id="track-Info">
+                            <div class="progress-bar" id="barInfo"></div>
+                        </div>
+                        <span class="char-right" id="char-I">I</span>
+                    </div>
+                </div>
+        
+                <div class="chart-item">
+                    <div class="chart-labels">
+                        <span class="label-left">우호적 기사 <b id="score-P">0%</b></span>
+                        <span class="type-title">Viewpoint Type</span>
+                        <span class="label-right"><b id="score-N">0%</b> 비판적 기사</span>
+                    </div>
+                    <div class="chart-bar-area">
+                        <span class="char-left" id="char-P">P</span>
+                        <div class="progress-track" id="track-View">
+                            <div class="progress-bar" id="barView"></div>
+                        </div>
+                        <span class="char-right" id="char-N">N</span>
+                    </div>
+                </div>
+            </div>
+        
+            <div class="result-footer" style="position: relative;"> <button class="btn-main-news" id="goCurationBtn">NPTI 업데이트
+                    하기</button>
+            
+                <div id="nptiUpdateTooltip" class="npti-update-tooltip">
+                    <h3>NPTI 업데이트란?</h3>
+                    <p>NPTI 업데이트는 <strong>유저의 기사 탐색 행동</strong>을 기반으로 뉴스 성향 점수가 반영 조정 되는 기능입니다.</p>
+                    <p>읽은 기사와 탐색 패턴이 누적되어 현재의 뉴스 소비 성향에 더 가까운 유형으로 업데이트됩니다.</p>
+                    <ul>
+                        <li>하루 <strong>1회 직접 업데이트</strong> 가능</li>
+                        <li>매주 <strong>1회 자동 업데이트</strong> 진행</li>
+                    </ul>
+                    <div class="tooltip-footer">
+                        💡 시간이 지날수록 NPTI는 더 정확해집니다.
+                    </div>
+                </div>
+            </div>
+
+        </section>
+
         <section class="npti-status-banner" onclick="location.href='/view/html/test.html'">
             <div class="banner-left">
                 <p><span class="highlight">NPTI 진단</span>으로 맞춤 뉴스를 받아보세요</p>
@@ -101,7 +195,7 @@
                 <span>나도 진단하러가기 <i class="fa-solid fa-chevron-right"></i></span>
             </div>
         </section>
-
+            
     </main>
     <!-- 팝업 -->
     <div id="logoutModal" class="modal-overlay">
