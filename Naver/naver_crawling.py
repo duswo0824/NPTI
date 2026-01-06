@@ -163,6 +163,7 @@ def get_article_detail(url, category_name):
             category = "생활/문화"
 
         # 5. 언론사
+        media = None
         media_tag = soup.select_one("span.media_end_head_top_logo_text") or soup.select_one(
             "img.media_end_head_top_logo_img")
         if media_tag:
