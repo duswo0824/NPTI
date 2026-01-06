@@ -214,17 +214,22 @@ document.addEventListener('DOMContentLoaded', function () {
                 body: JSON.stringify(payload)
             });
 
-            if (!res.ok) {
-                const msg = await res.text();
-                throw new Error(msg);
+            const data = await res.json();
+
+            if (!data.success) {
+                showAlert(data.msg);
+                return;
             }
 
-            showAlert('회원가입이 완료되었습니다!\n로그인 페이지로 이동합니다.', () => {
-                window.location.href = '/view/html/login.html';
-            });
+            showAlert(
+                '회원가입이 완료되었습니다!\n로그인 페이지로 이동합니다.',
+                () => {
+                    window.location.href = '/view/html/login.html';
+                }
+            );
 
         } catch (err) {
-            showAlert('회원가입 실패: ' + err.message);
+            showAlert('서버와 통신 중 오류가 발생했습니다.');
         }
     });
 });
