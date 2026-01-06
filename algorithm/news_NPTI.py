@@ -59,15 +59,15 @@ def err_article(news_id, error_message):
     }
     try:
         es.index(index="err_article", document=doc)
-        logger.info(f"에러 정보 ES 저장 완료: {news_id}")
+        logger.info(f"[기사 NPTI 분류] 에러 정보 ES 저장 완료: {news_id}")
     except Exception as e:
-        logger.error(f"ES 에러 로그 저장 중 추가 오류 발생: {e}")
+        logger.error(f"[기사 NPTI 분류] ES 에러 로그 저장 중 추가 오류 발생: {e}")
 
 # ==========================================================================================
 df_full = pd.read_csv(r'D:\PROJECT\Project_team3\LLM_test\LLM_results\TEST_DATA_v1.csv')
 df = df_full.dropna(subset=['content', 'final_article_type', 'final_information_type', 'final_viewpoint_type'])
 
-# X: 입력 데이터 (기사 본문), y: 타겟 데이터 (3가지 레이블)
+# X: 입력 데이터 (기사 본문), y: 타겟 데이터 (3가지 라벨)
 X = df['content']
 y = df[['final_article_type', 'final_information_type', 'final_viewpoint_type']]
 
@@ -195,7 +195,7 @@ def classify_npti():
                     db.commit()
                     logger.info(f"현재 {count}건 처리 중")
             except Exception as e:
-                logger.info(f'기사[ {news_id} ] 분류 중 에러: {e}')
+                logger.info(f'[기사 NPTI 분류]-[ {news_id} ] 에러: {e}')
                 err_article(news_id, e)
                 continue
 
