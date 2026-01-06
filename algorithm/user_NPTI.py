@@ -50,7 +50,6 @@ def algorithm_training():
         scale_pos_weight=np.sqrt(scale_weight),  # 상황에 맞게 조정 (논문에서는 20, 혹은 scale_weight 그대로 사용)
         eval_metric='auc',
         n_jobs=-1,
-        early_stopping_rounds=100
     )
 
     model.fit(
@@ -71,6 +70,7 @@ def algorithm_training():
 
     # 1. AUC 출력
     print(f"ROC AUC: {roc_auc_score(y_test, y_prob):.4f}")
+    print(f"model test score : {model.score(x_test, y_test):.4f}")
 
     # 2. Classification Report (Precision, Recall, F1-score)
     print("\n[Classification Report]")
