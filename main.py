@@ -14,8 +14,10 @@ from db_index.db_npti_type import get_all_npti_type, get_npti_type_by_group, npt
 from db_index.db_npti_code import get_all_npti_codes, get_npti_code_by_code, npti_code_response
 from db_index.db_npti_question import get_all_npti_questions, get_npti_questions_by_axis, npti_question_response
 from db_index.db_user_info import UserCreateRequest, insert_user
+from db_index.user_npti import get_user_npti
 from sqlalchemy import text
 import hashlib
+from elasticsearch import Elasticsearch, ConnectionError as ESConnectionError
 
 app = FastAPI()
 logger = Logger().get_logger(__name__)
@@ -103,6 +105,83 @@ def read_news_raw(q: Optional[str] = None):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+es = Elasticsearch(
+    "http://localhost:9200",
+    basic_auth=("elastic", "elastic"),
+    verify_certs=False
+)
+
+FIELD_MAP = {
+    "title": "title_tokens",
+    "content": "content_tokens",
+    "media": "media",
+    "category": "category"
+}
+
+@app.get("/search")
+def search_news(
+    q: str = Query(...),
+    fields: Optional[str] = "title,content,media,category",
+    sort: str = "accuracy",
+    page: int = 1,
+    size: int = 20
+):
+    # 1. 검색어 방어
+    if not q.strip():
+        return {"total": 0, "data": []}
+
+    # 2. fields 매핑
+    field_list = [
+        FIELD_MAP[f] for f in fields.split(",")
+        if f in FIELD_MAP
+    ]
+
+    if not field_list:
+        field_list = ["title_tokens", "content_tokens"]
+
+    body = {
+        "query": {
+            "multi_match": {
+                "query": q,
+                "fields": field_list,
+                "operator": "or"
+            }
+        },
+        "from": (page - 1) * size,
+        "size": size
+    }
+
+    if sort == "latest":
+        body["sort"] = [{"pubdate": {"order": "desc"}}]
+
+    # 핵심: ES 에러를 반드시 잡는다
+    try:
+        res = es.search(
+            index="news_raw",
+            body=body,
+            _source=["title", "content", "media", "category", "pubdate"]
+        )
+    except ESConnectionError as e:
+        logger.error(f"[ES ERROR] {e}")
+        return {
+            "total": 0,
+            "data": [],
+            "error": "Elasticsearch connection failed"
+        }
+
+    hits = [
+        {
+            "news_id": hit["_id"],
+            **hit["_source"]
+        }
+        for hit in res["hits"]["hits"]
+    ]
+
+    return {
+        "total": res["hits"]["total"]["value"],
+        "data": hits
+    }
+
 
 if __name__ == "__main__":
     import uvicorn
@@ -171,12 +250,6 @@ def create_user(req: UserCreateRequest, db: Session = Depends(get_db)):
         logger.error(f"회원가입 오류: {e}")
         return {"success": False, "msg": "회원가입 처리 중 오류가 발생했습니다"}
 
-# 로그인
-def verify_password(raw_pw: str, hashed_pw: str) -> bool:
-    return hashlib.sha256(raw_pw.encode()).hexdigest() == hashed_pw
-
-
-
 @app.get("/users/check-id")
 def check_user_id(user_id: str, db: Session = Depends(get_db)):
     sql = """
@@ -187,6 +260,10 @@ def check_user_id(user_id: str, db: Session = Depends(get_db)):
     """
     exists = db.execute(text(sql), {"user_id": user_id}).first() is not None
     return {"exists": exists}
+
+# 로그인
+def verify_password(raw_pw: str, hashed_pw: str) -> bool:
+    return hashlib.sha256(raw_pw.encode()).hexdigest() == hashed_pw
 
 @app.post("/login")
 def login(req: dict, db: Session = Depends(get_db)):
@@ -231,7 +308,6 @@ def get_about(db: Session = Depends(get_db)):
         if len(items) == 2:
             left, right = items
             criteria.append({
-                "group": group,
                 "title": group.capitalize(),
                 "left": f"{left.npti_type} - {left.npti_kor}",
                 "right": f"{right.npti_type} - {right.npti_kor}"
@@ -251,6 +327,7 @@ def get_about(db: Session = Depends(get_db)):
             "code": r.npti_code,
             "name": r.type_nick,
             "desc": r.type_de,
+            "pref": "",  # 또는 실제 선호 설명 컬럼
             "types": [
                 r.length_type,
                 r.article_type,
@@ -266,4 +343,30 @@ def get_about(db: Session = Depends(get_db)):
         },
         "criteria": criteria,
         "guides": guides
+    }
+
+# NPTI 결과 조회
+@app.get("/users/me/npti") # me = 사용자
+def read_my_npti(
+    user_id: str = Query(..., description="임시 user_id (개발 단계)"),
+    db: Session = Depends(get_db)
+):
+    """
+    현재 로그인한 사용자(me)의 NPTI 결과 조회
+    ※ 지금은 auth가 없어서 user_id를 query로 받음
+    """
+
+    logger.info(f"[GET] /users/me/npti user_id={user_id}")
+
+    result = get_user_npti(db, user_id)
+
+    if not result:
+        return {
+            "hasResult": False,
+            "message": "NPTI 결과가 없습니다"
+        }
+
+    return {
+        "hasResult": True,
+        "data": result
     }
