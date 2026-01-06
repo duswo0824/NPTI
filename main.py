@@ -250,12 +250,6 @@ def create_user(req: UserCreateRequest, db: Session = Depends(get_db)):
         logger.error(f"회원가입 오류: {e}")
         return {"success": False, "msg": "회원가입 처리 중 오류가 발생했습니다"}
 
-# 로그인
-def verify_password(raw_pw: str, hashed_pw: str) -> bool:
-    return hashlib.sha256(raw_pw.encode()).hexdigest() == hashed_pw
-
-
-
 @app.get("/users/check-id")
 def check_user_id(user_id: str, db: Session = Depends(get_db)):
     sql = """
@@ -266,6 +260,10 @@ def check_user_id(user_id: str, db: Session = Depends(get_db)):
     """
     exists = db.execute(text(sql), {"user_id": user_id}).first() is not None
     return {"exists": exists}
+
+# 로그인
+def verify_password(raw_pw: str, hashed_pw: str) -> bool:
+    return hashlib.sha256(raw_pw.encode()).hexdigest() == hashed_pw
 
 @app.post("/login")
 def login(req: dict, db: Session = Depends(get_db)):
