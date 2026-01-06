@@ -381,8 +381,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (typeof initSlider === 'function') initSlider('all');
 
     // 공통 이벤트 리스너 연결
-    document.getElementById('btn-combine')?.addEventListener('click', confirmCombination);
-
+    const btn = document.getElementById('btn-combine');
+    if (btn) {
+        btn.addEventListener('click', confirmCombination);
+    }
     document.querySelectorAll('.section-lcin .nav-tabs a').forEach(tab => {
         tab.addEventListener('click', function (e) {
             e.preventDefault();

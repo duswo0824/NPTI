@@ -1,4 +1,4 @@
-// test.js
+//input_type db와 동일하게 수정
 document.addEventListener('DOMContentLoaded', function () {
     const questionList = document.getElementById('questionList');
     const nptiForm = document.getElementById('nptiForm');
@@ -73,12 +73,12 @@ document.addEventListener('DOMContentLoaded', function () {
                         <span class="option-label">매우 그렇지 않다</span>
                         ${[1, 2, 3, 4, 5].map(num => `
                             <div class="option-item">
-                                <input type="radio" //수정
+                                <input type="radio"
                                         name="${q.question_id}"
                                         value="${num}"
                                         required
                                         data-axis="${q.npti_axis}"
-                                        data-rate="${q.score_rate}">
+                                        data-ratio="${q.question_ratio}">
                                 <span class="option-num">${num}</span>
                             </div>
                         `).join('')}
@@ -94,8 +94,8 @@ document.addEventListener('DOMContentLoaded', function () {
         e.preventDefault();
 
         const formData = new FormData(nptiForm);
-        let finalScores = { length: 0, style: 0, info: 0, view: 0 };
-        const weights = [0.4, 0.3, 0.3]; // 가중치 설정
+        let finalScores = { length: 0, article: 0, info: 0, view: 0 };
+        /*const weights = [0.4, 0.3, 0.3]; // 가중치 설정
 
         // 1. 가중치 기반 점수 계산
         for (let [key, value] of formData.entries()) {
@@ -112,12 +112,31 @@ document.addEventListener('DOMContentLoaded', function () {
             else if (categoryIdx === 1) finalScores.style += weightedScore;
             else if (categoryIdx === 2) finalScores.info += weightedScore;
             else if (categoryIdx === 3) finalScores.view += weightedScore;
+        }*/ //삭제
+
+        /* ---------------------------------------------
+       [추가] DB 메타데이터 기반 점수 계산
+       --------------------------------------------- */
+        for (let [questionId, value] of formData.entries()) {
+            const input = nptiForm.querySelector(
+                `input[name="${questionId}"]:checked`
+            );
+
+            const axis = input.dataset.axis;              // length/article/info/view
+            const ratio = parseFloat(input.dataset.ratio); // 0.4 / 0.3
+            const score = parseInt(value);                 // 1~5
+
+            // 1~5 → 0~1 정규화
+            const normalized = (score - 1) / 4;
+
+            // 축별 점수 누적
+            finalScores[axis] += normalized * ratio;
         }
 
         // 2. 0.5(50%) 기준으로 타입 결정
         const type = [
             finalScores.length > 0.5 ? 'S' : 'L',
-            finalScores.style > 0.5 ? 'T' : 'C',
+            finalScores.article > 0.5 ? 'T' : 'C',
             finalScores.info > 0.5 ? 'F' : 'I',
             finalScores.view > 0.5 ? 'N' : 'P'
         ].join('');
