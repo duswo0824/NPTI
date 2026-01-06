@@ -8,8 +8,9 @@ def algorithm_training():
     # df.loc[df['isVisible'] == False, 'read'] = 0
 
     df['isVisible'] = df['isVisible'].astype(int) # 0:False, 1 :True
+    df.drop_duplicates(inplace=True)
 
-    features = ['timestamp','MMF_y_2','MMF_y_5','MMF_y_10','MMF_y_inf','MMF_x_2','MMF_x_5','MMF_x_10','MMF_x_inf','MSF_y_2','MSF_y_5','MSF_y_10','MSF_y_inf','isVisible','mouseX','mouseY']
+    features = ['user_id','news_id','timestamp','MMF_y_2','MMF_y_5','MMF_y_10','MMF_y_inf','MMF_x_2','MMF_x_5','MMF_x_10','MMF_x_inf','MSF_y_2','MSF_y_5','MSF_y_10','MSF_y_inf','isVisible']
     x = df[features]
     y = df['read']
 

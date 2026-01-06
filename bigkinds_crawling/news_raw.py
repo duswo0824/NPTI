@@ -45,10 +45,10 @@ def news_crawling(max_pages: int):
             wait.until(ec.presence_of_all_elements_located((By.CSS_SELECTOR, "#news-results div.news-item")))
             news_items = driver.find_elements(By.CSS_SELECTOR, "#news-results div.news-item")
 
-            logger.info(f'{page}페이지 {len(news_items)}개 시작')
+            logger.info(f'bigkinds {page}페이지 {len(news_items)}개 시작')
 
             for i, news_item in enumerate(news_items):
-                logger.info(f'{page} 페이지 {i+1}번째 기사')
+                logger.info(f'bigkinds {page} 페이지 {i+1}번째 기사')
                 try:
                     # 모달 초기화 스크립트 실행
                     driver.execute_script("""
@@ -68,7 +68,7 @@ def news_crawling(max_pages: int):
                         link = link_elem[0].get_attribute("href")
                         news_id = hashlib.sha256(link.split('//', 1)[1].encode()).hexdigest()
                     else:
-                        logger.info(f"원문 링크(news_id)없음 - 스킵")
+                        logger.info(f"bigkinds 원문 링크(news_id)없음 - 스킵")
                         continue
 
                     if search_news_row(news_id):
@@ -86,7 +86,7 @@ def news_crawling(max_pages: int):
                     category_elem = news_item.find_element(By.CSS_SELECTOR, "div.info span.bullet-keyword")
                     category_text = category_elem.text.strip()
                     if category_text == '미분류' or '날씨' in category_text:
-                        logger.info(f"{category_text} - 스킵")
+                        logger.info(f"bigkinds {category_text} - 스킵")
                         continue
 
                     category = category_text.split('>')[0].strip()
@@ -145,7 +145,7 @@ def news_crawling(max_pages: int):
                     error_msg = f'{page}페이지 {i + 1}번째 에러: {e}'
                     logger.error(error_msg)
                     # 2. Elasticsearch에 에러 로그 저장
-                    index_error_log(error_msg)
+                    index_error_log(error_msg,'bigkinds')
                     continue
 
             total_samples.extend(sample)
@@ -161,14 +161,14 @@ def news_crawling(max_pages: int):
                 except Exception as e:
                     error_msg = f'페이지 이동 실패: {e}'
                     logger.error(error_msg)
-                    index_error_log(error_msg)
+                    index_error_log(error_msg, 'bigkinds')
                     break
             else:
                 break
     except Exception as e:
         error_msg = f"크롤링 함수 오류: {e}"
         logger.error(error_msg)
-        index_error_log(error_msg)
+        index_error_log(error_msg, 'bigkinds')
 
     finally:
         driver.quit()
