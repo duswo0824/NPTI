@@ -8,10 +8,19 @@ document.addEventListener('DOMContentLoaded', function () {
         // -------------------------------------------------------------------
         // 로그인 확인 로직
         // 로그인 되어 있으면 유저 행동 수집 로직 실행
+        userBehavior();
     } else {
         alert("잘못된 접근입니다.");
     }
 });
+
+document.addEventListener('beforeunload',
+});
+
+function sendDataToServer() {
+    const finalData = tracker.stop();
+    const blob = new Blob([JSON.stringify(finalData)], {type: 'application/json'});
+    navigator.sendBeacon('/save_behavior', blob);
 
 
 // request에 대한 response 확인 -> 기사 원문 가져오기 -> 관련 기사가 있으면 관련 기사 가져오기
@@ -56,7 +65,7 @@ function renderArticle(data){
     }
     const imgContainer = document.querySelector('div.img-placeholder');
     if (imgContainer && data.img) {
-        imgContainer.innerHTML = `<img src="${data.img}" style="height:100%, width:auto", alt="뉴스 이미지">`;
+        imgContainer.innerHTML = `<img src="${data.img}" style="height:100%;, width:auto;", alt="뉴스 이미지">`;
         imgContainer.style.display = 'block';
     } else if (imgContainer && !data.img){
         imgContainer.style.display = 'none';
@@ -79,7 +88,7 @@ function initRelatedNews(related_news) {
                     <h4>${item.title}</h4>
                     <div class="related-info"><span>${item.media}</span> | <span>${item.pubdate}</span></div>
                 </div>
-                <div class="related-img"><img src=item.img></div>
+                <div class="related-img"><img src="${item.img}"></div>
             </a>`;
         relatedList.insertAdjacentHTML('beforeend', html);
     });
@@ -88,51 +97,58 @@ function initRelatedNews(related_news) {
 
 // 누적마우스X,Y & 누적스크롤Y & 현재페이지X,Y & baseline3 & timestamp 수집
 // 유저 행동 데이터 수집---------------------------------------------------------------------------
-function userBehavior(intervalMs = 100) {
-    // 변수 정의
+window.currentTracker = null;
+function userBehavior(intervalMs = 1000) {
+    if (window.currentTracker) {
+        console.log("기존 수집기 실행중 - 종료 후 재시작")
+        window.currentTracker.stop();
+    }
+    // 1. 초기 상태 및 시작 시간 정의
+    const startTime = Date.now(); // [New] 수집 시작 시간 (정수)
+    let stepCount = 0;            // [New] 데이터 수집 회차 (0, 1, 2... 순차 증가)
+    let collectedData = [];
     const state = {
-        currentX: 0, // 현재 마우스 X,Y
+        currentX: 0,
         currentY: 0,
-        cumulativeX: 0, // 누적 마우스 X,Y
-        cumulativeY: 0, 
-        lastX: null,    // 직전 위치 (누적 계산용)
+        cumulativeX: 0,
+        cumulativeY: 0,
+        lastX: null,
         lastY: null,
 
-        scrollTop: window.scrollY || window.pageYOffset, // 현재 스크롤 위치
-        cumulativeScrollY: 0,                            // 누적 스크롤 이동 거리
-        lastScrollTop: window.scrollY || window.pageYOffset // 직전 스크롤 위치 (초기값은 현재 위치)
+        scrollTop: window.scrollY || window.pageYOffset,
+        cumulativeScrollY: 0,
+        lastScrollTop: window.scrollY || window.pageYOffset
     };
-    const targetDiv = document.getElementById('viewBody') // 
+
+    const targetDiv = document.getElementById('viewBody');
+
     const isPageActive = () => {
         return !document.hidden && document.hasFocus();
     };
+
     const handleMouseMove = (e) => {
-        if (!isPageActive()) return; // 페이지가 안 보이면 업데이트도 안 함 (성능 절약)
-        const x = e.pageX; // 현재마우스X,Y
+        if (!isPageActive()) return;
+        const x = e.pageX;
         const y = e.pageY;
-        state.currentX = x; 
-        state.currentY = y; 
+        state.currentX = x;
+        state.currentY = y;
         if (state.lastX !== null && state.lastY !==null){
-            state.cumulativeX += Math.abs(x - state.lastX); // 누적마우스X,Y
+            state.cumulativeX += Math.abs(x - state.lastX);
             state.cumulativeY += Math.abs(y - state.lastY);
         }
         state.lastX = x;
         state.lastY = y;
     };
+
     const handleScroll = () => {
         if (!isPageActive()) return;
-
-        // 현재 스크롤 위치 가져오기 (크로스 브라우징 지원)
         const currentScrollY = window.scrollY || window.pageYOffset || document.documentElement.scrollTop;
-        
-        state.scrollTop = currentScrollY; // 현재 위치 갱신
+        state.scrollTop = currentScrollY;
 
-        // 누적 스크롤 계산
         if (state.lastScrollTop !== null) {
             const delta = Math.abs(currentScrollY - state.lastScrollTop);
             state.cumulativeScrollY += delta;
         }
-
         state.lastScrollTop = currentScrollY;
     };
 
@@ -143,55 +159,75 @@ function userBehavior(intervalMs = 100) {
     // 주기적 데이터 수집 (Interval)
     const timerId = setInterval(() => {
         if (!isPageActive()) {
-            return; 
+            return;
         }
 
-        // 타겟과의 거리 계산 ----------------------------------------------------------
+        // [New] Step 증가 (데이터 순번)
+        stepCount++;
+
+        // 타겟과의 거리 계산
         let distance = -1;
         if (targetDiv) {
             const rect = targetDiv.getBoundingClientRect();
-            // getBoundingClientRect는 뷰포트 기준이므로 scroll 값을 더해줘야 pageX/Y와 매칭됨
             const scrollX = window.scrollX || window.pageXOffset;
             const scrollY = window.scrollY || window.pageYOffset;
 
             const divCenterX = rect.left + scrollX + (rect.width / 2);
             const divCenterY = rect.top + scrollY + (rect.height / 2);
 
-            // 유클리드 거리 계산 -------------------------------------------------------------
             distance = Math.sqrt(
-                Math.pow(state.currentX - divCenterX, 2) + 
+                Math.pow(state.currentX - divCenterX, 2) +
                 Math.pow(state.currentY - divCenterY, 2)
             );
         }
 
+        // 현재 시간 (정수)
+        const now = Date.now();
+
         // 최종 데이터 패키징
         const dataSnapshot = {
-            timestamp: new Date().toISOString(),
-            mouseX: state.currentX,         // 현재 X
-            mouseY: state.currentY,         // 현재 Y
-            accX: state.cumulativeX,        // 누적 X
-            accY: state.cumulativeY,        // 누적 Y
-            accScrollY: state.cumulativeScrollY, // 누적 스크롤 Y
-            distTarget: distance.toFixed(2) // 타겟과의 거리 (소수점 2자리)
+            // [Modified] 타임스탬프: 1970년 1월 1일 이후 흐른 밀리초 (정수)
+            // 예: 1735689000123
+            // timestamp: now,
+
+            // [New] 경과 시간: 시작 후 흐른 밀리초 (0, 100, 200...) - 분석 시 가장 유용
+            elapsedMs: (now - startTime)/1000,
+
+            // [New] 수집 순번: 1, 2, 3... (누락된 데이터 확인 용도)
+            step: stepCount,
+
+            mouseX: Math.round(state.currentX), // 좌표도 정수로 반올림 처리 (선택사항)
+            mouseY: Math.round(state.currentY),
+            MMF_X: Math.floor(state.cumulativeX),
+            MMF_Y: Math.floor(state.cumulativeY),
+            MSF_Y: Math.floor(state.cumulativeScrollY),
+            distTarget: parseFloat(distance.toFixed(2)) // 숫자형으로 변환
         };
 
-        // 데이터를 배열에 넣어서 전송하는 로직 필요 ----------------------------------------------
-        console.log("Data:", dataSnapshot);
+        collectedData.push(dataSnapshot);
+
+        console.log("Data:", dataSnapshot, "total:", collectedData.length);
+
+        if (collectedData.length >= 100) {
+            sendDataToServer(collectedData);
+            collectedData = [];
+        }
 
     }, intervalMs);
 
-
-    // 5. 클린업 함수 반환 (수집 종료 시 호출)
-    return {
+    // 클린업 함수
+    const trackInstance = {
         stop: () => {
             window.removeEventListener('mousemove', handleMouseMove);
             window.removeEventListener('scroll', handleScroll);
             clearInterval(timerId);
+            window.currentTracker = null;
             console.log("데이터 수집이 종료되었습니다.");
         }
     };
+    window.currentTracker = trackInstance;
+    return trackInstance;
 }
-
 
 
 
