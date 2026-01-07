@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, Query
+from fastapi import FastAPI, Depends, Query, Request
 from fastapi.responses import FileResponse
 from starlette.responses import JSONResponse, RedirectResponse
 from starlette.staticfiles import StaticFiles
@@ -13,15 +13,21 @@ from database import get_db
 from db_index.db_npti_type import get_all_npti_type, get_npti_type_by_group, npti_type_response
 from db_index.db_npti_code import get_all_npti_codes, get_npti_code_by_code, npti_code_response
 from db_index.db_npti_question import get_all_npti_questions, get_npti_questions_by_axis, npti_question_response
-from db_index.db_user_info import UserCreateRequest, insert_user
+from db_index.db_user_info import UserCreateRequest, insert_user, authenticate_user
 from db_index.user_npti import get_user_npti
 from sqlalchemy import text
-import hashlib
+from starlette.middleware.sessions import SessionMiddleware
 from elasticsearch import Elasticsearch, ConnectionError as ESConnectionError
 
 app = FastAPI()
 logger = Logger().get_logger(__name__)
 app.mount("/view",StaticFiles(directory="view"), name="view")
+app.add_middleware(
+    SessionMiddleware,
+    secret_key="npti-secret-key",
+    max_age=60 * 60 * 24, #1일
+    same_site="lax"         # 기본 보안 옵션
+)
 
 @app.get("/")
 def main():
@@ -248,7 +254,7 @@ def create_user(req: UserCreateRequest, db: Session = Depends(get_db)):
     # DB에 사용자 저장
     insert_user(db, req.model_dump())
     db.commit()
-    return RedirectResponse(url="/login")
+    return FileResponse("view/html/login.html")
 
 @app.get("/users/check-id")
 def check_user_id(user_id: str, db: Session = Depends(get_db)):
@@ -262,36 +268,43 @@ def check_user_id(user_id: str, db: Session = Depends(get_db)):
     return {"exists": exists}
 
 # 로그인
-def verify_password(raw_pw: str, hashed_pw: str) -> bool:
-    return hashlib.sha256(raw_pw.encode()).hexdigest() == hashed_pw
-
 @app.get("/login")
 def page_login():
     return FileResponse("view/html/login.html")
 
 @app.post("/login")
-def login(req: dict, db: Session = Depends(get_db)):
-    user_id = req.get("user_id")
-    user_pw = req.get("user_pw")
+def login(
+    req: dict,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    success = authenticate_user(
+        db,
+        req.get("user_id"),
+        req.get("user_pw")
+    )
 
-    sql = """
-        SELECT user_id, user_pw, activation
-        FROM user_info
-        WHERE user_id = :user_id
-    """
-    user = db.execute(text(sql), {"user_id": user_id}).fetchone()
+    if not success:
+        return {"success": False}
 
-    if not user:
-        return {"success": False, "msg": "아이디 또는 비밀번호 오류"}
+    # 세션에 사용자 ID 저장
+    request.session["user_id"] = req.get("user_id")
+    return FileResponse("view/html/main.html")
 
-    if not user.activation:
-        return {"success": False, "msg": "비활성화된 계정입니다"}
+#로그인 상태를 확인
+@app.get("/auth/me")
+def auth_me(request: Request):
+    user_id = request.session.get("user_id")
 
-    if not verify_password(user_pw, user.user_pw):
-        return {"success": False, "msg": "아이디 또는 비밀번호 오류"}
+    return {
+        "loggedIn": bool(user_id),
+        "user_id": user_id  # 서버가 기억하고 있는 사용자 ID
+    }
 
-    logger.info(f"[LOGIN SUCCESS] {user_id}")
-    return {"success": True, "msg": "login success"}
+@app.post("/logout")
+def logout(request: Request):
+    request.session.clear()
+    return FileResponse("view/html/main.html")
 
 @app.get("/api/about")
 def get_about(db: Session = Depends(get_db)):
@@ -350,24 +363,26 @@ def get_about(db: Session = Depends(get_db)):
     }
 
 # NPTI 결과 조회
-@app.get("/users/me/npti") # me = 사용자
+@app.get("/users/me/npti")
 def read_my_npti(
-    user_id: str = Query(..., description="임시 user_id (개발 단계)"),
+    request: Request,
     db: Session = Depends(get_db)
 ):
-    """
-    현재 로그인한 사용자(me)의 NPTI 결과 조회
-    ※ 지금은 auth가 없어서 user_id를 query로 받음
-    """
+    user_id = request.session.get("user_id")
 
-    logger.info(f"[GET] /users/me/npti user_id={user_id}")
+    # 로그인 안 됨 → 사실만 반환
+    if not user_id:
+        return {
+            "hasResult": False,
+            "reason": "not_logged_in"
+        }
 
     result = get_user_npti(db, user_id)
 
     if not result:
         return {
             "hasResult": False,
-            "message": "NPTI 결과가 없습니다"
+            "reason": "no_result"
         }
 
     return {
