@@ -545,28 +545,47 @@ function setupGlobalEvents(isLoggedIn, hasNPTI) {
     document.getElementById('closeLogout')?.addEventListener('click', () => toggleModal('logoutModal', false));
     document.getElementById('confirmLogout')?.addEventListener('click', () => {
         localStorage.clear(); // 로그아웃 처리
-        location.replace("/view/html/main.html");
+        location.replace("/");
     });
 
-    // (7) About NPTI 팝업 (말풍선 클릭)
+    // (7) About NPTI 팝업
     const aboutBtn = document.querySelector('.search-bubble');
     if (aboutBtn) {
         aboutBtn.addEventListener('click', (e) => {
             e.preventDefault();
-            const modal = document.getElementById('aboutModal');
-            // 외부 라이브러리(window.renderNPTI)가 로드되었는지 확인
-            if (modal && typeof window.renderNPTI === 'function') {
-                window.renderNPTI('#aboutRoot');
-                modal.style.display = 'flex';
-                document.body.style.overflow = 'hidden';
+
+            // 1. 모달 구조가 없으면 동적 주입
+            if (!document.getElementById('aboutModal')) {
+                document.body.insertAdjacentHTML('beforeend', `
+                    <div id="aboutModal" class="modal">
+                        <div class="modal-content">
+                            <span class="close-btn">&times;</span>
+                            <div id="aboutRoot" class="modal-inner"></div>
+                        </div>
+                    </div>`);
             }
+
+            const modal = document.getElementById('aboutModal');
+            const root = document.getElementById('aboutRoot');
+
+            // 2. 내용이 비어있고 renderNPTI 함수(about.js)가 존재하면 실행
+            if (root && root.innerHTML.trim() === "" && typeof renderNPTI === 'function') {
+                renderNPTI(root);
+            }
+
+            // 3. 모달 표시
+            modal.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+
+            // 4. 배경 클릭 시 닫기 (한 번만 등록)
+            modal.onclick = (e) => {
+                if (e.target === modal || e.target.classList.contains('close-btn')) {
+                    modal.style.display = 'none';
+                    document.body.style.overflow = 'auto';
+                }
+            };
         });
     }
-    // About 팝업 닫기 버튼
-    document.querySelector('#aboutModal .close-btn')?.addEventListener('click', () => {
-        document.getElementById('aboutModal').style.display = 'none';
-        document.body.style.overflow = 'auto';
-    });
 }
 
 /* 말풍선 버튼(헤더 우측) 상태 업데이트 */
