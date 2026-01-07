@@ -545,7 +545,7 @@ function setupGlobalEvents(isLoggedIn, hasNPTI) {
     document.getElementById('closeLogout')?.addEventListener('click', () => toggleModal('logoutModal', false));
     document.getElementById('confirmLogout')?.addEventListener('click', () => {
         localStorage.clear(); // 로그아웃 처리
-        location.replace("/view/html/main.html");
+        location.replace("/");
     });
 
     // (7) About NPTI 팝업
