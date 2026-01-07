@@ -377,11 +377,6 @@ async def process_article(item, cat_name, kiwi, sem):
 # 전체 크롤링 함수
 def crawler_naver():
     logger.info("=====NAVER 크롤링 프로세스 시작=====")
-    start_time = time.time()
-
-    # 크롤링 주기 판단용
-    now = datetime.now()
-    current_minute = now.minute
 
     # ES 인덱스 생성
     try:
@@ -391,38 +386,50 @@ def crawler_naver():
         logger.error(error_msg)
         index_error_log(error_msg, "NAVER")
         return
+    #run_fast_crawl() #서버시작시 시작
 
+
+def run_fast_crawl():
     driver = get_safe_driver()
     if not driver:
-        logger.error("드라이버 로드 실패로 크롤링을 중단합니다.")
+        logger.error("드라이버 로드 실패로 FAST 크롤링 중단")
         return
+
     try:
-        # 일반 기사 크롤링
-        fast_categories = {"정치": "100", "경제": "101", "사회": "102", "세계": "104"}
-        logger.info("==========[일반/정경사세] 수집 시작==========")
+        fast_categories = {
+            "정치": "100", "경제": "101",
+            "사회": "102", "세계": "104"
+        }
+        logger.info("==========[FAST] 정경사세 수집 시작==========")
         crawling_general_news(driver, fast_categories)
 
-        if current_minute < 10 or (25 <= current_minute < 35):
-            logger.info(">>> 저주기(30분) 카테고리 수집 타임 (일반/스포츠/연예)")
-
-            # 일반 뉴스 나머지
-            slow_categories = {"생활/문화": "103", "IT/과학": "105"}
-            crawling_general_news(driver, slow_categories)
-            # 스포츠 기사 크롤링
-            crawling_sports_news(driver)
-            # 연예 기사 크롤링
-            crawling_enter_news(driver)
-        else:
-            logger.info("30분 주기 카테고리 건너뛰기")
     except Exception as e:
         logger.error(traceback.format_exc())
-        error_msg =f"메인 크롤링 루프 에러: {e}"
-        logger.error(error_msg)
-        index_error_log(error_msg, "NAVER")
+        index_error_log(f"FAST 크롤링 에러: {e}", "NAVER")
+
     finally:
-        if driver:
-            driver.quit()
-            logger.info(f"드라이버 종료 및 NAVER 크롤링 프로세스 완료 / {time.time()-start_time:.2f}초 소요")
+        driver.quit()
+
+def run_slow_crawl():
+    driver = get_safe_driver()
+    if not driver:
+        logger.error("드라이버 로드 실패로 SLOW 크롤링 중단")
+        return
+
+    try:
+        logger.info("==========[SLOW] 30분 주기 수집 시작==========")
+
+        slow_categories = {"생활/문화": "103","IT/과학": "105"}
+        crawling_general_news(driver, slow_categories)
+        crawling_sports_news(driver)
+        crawling_enter_news(driver)
+
+    except Exception as e:
+        logger.error(traceback.format_exc())
+        index_error_log(f"SLOW 크롤링 에러: {e}", "NAVER")
+
+    finally:
+        driver.quit()
 
 ################################################################################################################
 # 일반기사 크롤링 함수
