@@ -21,6 +21,7 @@ from elasticsearch import Elasticsearch, ConnectionError as ESConnectionError
 from datetime import timedelta
 from db_index.db_user_answers import insert_user_answers
 from db_index.db_user_npti import upsert_user_npti
+import json
 
 app = FastAPI()
 logger = Logger().get_logger(__name__)
@@ -51,6 +52,36 @@ async def get_article(news_id:str):
         return JSONResponse(content=news_info,  status_code=200)
     else:
         return JSONResponse(content=None, status_code=404)
+
+
+# JS의 sendBeacon('/log/behavior') 경로와 일치시킴
+@app.post("/log/behavior")
+async def collect_behavior_log(request: Request):
+    """
+    Pydantic 모델 없이 Request 객체에서 직접 JSON 데이터를 추출합니다.
+    """
+    try:
+        # 1. Body 데이터를 Dictionary로 변환 (await 필수)
+        data = await request.json()
+
+        # 2. 데이터 확인 (터미널 출력)
+        # JS에서 보낸 payload 구조: { news_id, user_id, session_end_time, total_logs, logs }
+        news_id = data.get("news_id")
+        user_id = data.get("user_id")
+        log_count = data.get("total_logs")
+
+        print(f"[수신 성공] News: {news_id} | User: {user_id} | Logs: {log_count}개")
+
+        # 3. (선택사항) 파일로 저장 예시 (DB 연동 전 테스트용)
+        # 데이터를 한 줄에 하나씩 JSON으로 저장 (JSON Lines 포맷)
+        # with open("user_behavior_logs.jsonl", "a", encoding="utf-8") as f:
+        #     f.write(json.dumps(data, ensure_ascii=False) + "\n")
+
+        return {"status": "ok", "message": "Data received successfully"}
+
+    except Exception as e:
+        print(f"[에러 발생] {e}")
+        return {"status": "error", "message": str(e)}
 
 
 @app.get("/sample")
