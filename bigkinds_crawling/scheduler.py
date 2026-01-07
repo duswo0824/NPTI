@@ -1,6 +1,7 @@
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from Naver.naver_crawling import crawling_general_news, crawling_sports_news, crawler_naver
+from algorithm.news_NPTI import classify_npti_fast
 from bigkinds_crawling.news_raw import news_crawling
 from bigkinds_crawling.news_aggr_grouping import news_aggr
 import multiprocessing
@@ -64,6 +65,7 @@ def sch_start():
         'max_instances': 1
     }
     sch = AsyncIOScheduler(job_defaults=job_defaults)
+    now = datetime.now(timezone(timedelta(hours=9)))
 
     # 5분(300초) 주기지만, 안전을 위해 280초(4분 40초)에 강제 종료하도록 설정
     # 그래야 5분 정각에 새 스케줄러가 시작될 때 충돌이 없습니다.
@@ -75,7 +77,17 @@ def sch_start():
         minutes=5,
         id='news_crawling',
         args=[news_crawling, (10,), 280],
-        next_run_time=(datetime.now(timezone(timedelta(hours=9)))+timedelta(seconds=5)).isoformat(timespec='seconds') # 함수명, 인자(튜플), 타임아웃(초)
+        next_run_time=(now + timedelta(seconds=5)).isoformat(timespec="seconds") # 함수명, 인자(튜플), 타임아웃(초)
+    )
+
+    # 네이버 크롤러
+    sch.add_job(
+        run_job_with_timeout,
+        'interval',
+        minutes=10,  # 10분마다 실행
+        id='crawler_naver',
+        args=[crawler_naver, (), 280],
+        next_run_time=(now + timedelta(seconds=10)).isoformat(timespec="seconds")
     )
 
     # 2-2. 뉴스 집계 등록
@@ -85,16 +97,17 @@ def sch_start():
         minutes=5,
         id='news_aggr',
         args=[news_aggr, (), 290],
-        next_run_time=(datetime.now(timezone(timedelta(hours=9)))+timedelta(seconds=5)).isoformat(timespec='seconds')
+        next_run_time=(now + timedelta(seconds=30)).isoformat(timespec="seconds")
     )
 
+    # 기사 NPTI 라벨링 알고리즘 호출
     sch.add_job(
         run_job_with_timeout,
-        'interval',
-        minutes=10,  # 10분마다 실행
-        id='naver_integrated_task',
-        args=[crawler_naver, (), 550],
-        next_run_time=(datetime.now(timezone(timedelta(hours=9)))+timedelta(seconds=15)).isoformat(timespec='seconds')
+        trigger="interval",
+        minutes=5,
+        id="news_npti_classify",
+        args=[classify_npti_fast, (), 300],  # 5분 타임아웃
+        next_run_time=(now + timedelta(seconds=50)).isoformat(timespec="seconds")
     )
 
     return sch
