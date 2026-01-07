@@ -6,18 +6,17 @@ document.addEventListener('DOMContentLoaded', () => {
     initLoginUI(state);
     bindLoginEvents(state);
     checkInputValidity(state);
-    checkLoginStatus(state);
+    checkLoginStatus(state);   // 🔑 이미 로그인된 사용자 차단
 });
 
 /* =========================
    [1] 상태 생성
-   ========================= */
+========================= */
 function getInitialState() {
     return {
-        // 상태
         onConfirm: null,
         isLoggedIn: false,
-        userId: null,          // window.USER_ID 제거 → state로 통합
+        userId: null,
 
         // DOM
         idInput: null,
@@ -33,10 +32,9 @@ function getInitialState() {
     };
 }
 
-
 /* =========================
    [2] UI 초기화
-   ========================= */
+========================= */
 function initLoginUI(state) {
     state.idInput = document.getElementById('userid');
     state.pwInput = document.getElementById('userpw');
@@ -52,17 +50,16 @@ function initLoginUI(state) {
 
 /* =========================
    [3] 로직 함수
-   ========================= */
+========================= */
 
 // 입력값에 따라 로그인 버튼 활성/비활성
 function checkInputValidity(state) {
     if (!state.idInput || !state.pwInput || !state.submitBtn) return;
 
-    const valid =
+    state.submitBtn.disabled = !(
         state.idInput.value.length > 0 &&
-        state.pwInput.value.length > 0;
-
-    state.submitBtn.disabled = !valid;
+        state.pwInput.value.length > 0
+    );
 }
 
 // 공통 알림 모달
@@ -73,7 +70,8 @@ function showAlert(state, message, callback = null) {
     state.modal.classList.add('show');
     state.onConfirm = callback;
 }
-// 로그인 payload (서버로 보낼 데이터)
+
+// 로그인 payload
 function buildLoginPayload(state) {
     return {
         user_id: state.idInput.value,
@@ -85,23 +83,27 @@ function buildLoginPayload(state) {
 function applyLoginState(state, userId) {
     state.isLoggedIn = Boolean(userId);
     state.userId = userId || null;
-
-    if (state.isLoggedIn) {
-        document.body.classList.add('logged-in');
-    } else {
-        document.body.classList.remove('logged-in');
-    }
+    document.body.classList.toggle('logged-in', state.isLoggedIn);
 }
 
-// 로그인 상태 확인 (Session 기준)
+/* =========================
+   [로그인 페이지 접근 가드]
+   이미 로그인된 경우 → 메인으로 이동
+========================= */
 async function checkLoginStatus(state) {
     try {
-        const res = await fetch('/auth/me');
+        const res = await fetch('/auth/me', {
+            credentials: 'include'
+        });
+
+        if (!res.ok) return;
+
         const data = await res.json();
 
-        // 서버가 준 fact만 반영
-        applyLoginState(state, data.user_id);
-
+        if (data.user_id) {
+            // 이미 로그인된 상태
+            window.location.replace('/');
+        }
     } catch {
         console.warn('로그인 상태 확인 실패');
     }
@@ -110,7 +112,10 @@ async function checkLoginStatus(state) {
 // 로그아웃
 async function logout(state) {
     try {
-        await fetch('/logout', { method: 'POST' });
+        await fetch('/logout', {
+            method: 'POST',
+            credentials: 'include'
+        });
         location.reload();
     } catch {
         showAlert(state, '로그아웃 중 오류가 발생했습니다.');
@@ -119,7 +124,7 @@ async function logout(state) {
 
 /* =========================
    [4] 이벤트 바인딩
-   ========================= */
+========================= */
 function bindLoginEvents(state) {
 
     // 입력 감지 & X 버튼
@@ -135,9 +140,7 @@ function bindLoginEvents(state) {
         input.addEventListener('input', () => {
             updateClearBtn();
             checkInputValidity(state);
-            if (state.errorMessage) {
-                state.errorMessage.classList.remove('show');
-            }
+            state.errorMessage?.classList.remove('show');
         });
 
         btnClear.addEventListener('click', () => {
@@ -149,13 +152,11 @@ function bindLoginEvents(state) {
     });
 
     // 모달 확인 버튼
-    if (state.modalBtn) {
-        state.modalBtn.addEventListener('click', () => {
-            state.modal.classList.remove('show');
-            if (state.onConfirm) state.onConfirm();
-            state.onConfirm = null;
-        });
-    }
+    state.modalBtn?.addEventListener('click', () => {
+        state.modal.classList.remove('show');
+        if (state.onConfirm) state.onConfirm();
+        state.onConfirm = null;
+    });
 
     // 로그인 요청
     if (state.loginForm && state.submitBtn) {
@@ -167,6 +168,7 @@ function bindLoginEvents(state) {
                 const res = await fetch('/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
                     body: JSON.stringify(buildLoginPayload(state))
                 });
 
@@ -174,9 +176,7 @@ function bindLoginEvents(state) {
 
                 // 로그인 실패
                 if (!data.success) {
-                    if (state.errorMessage) {
-                        state.errorMessage.classList.add('show');
-                    }
+                    state.errorMessage?.classList.add('show');
                     state.idInput.value = '';
                     state.pwInput.value = '';
                     state.idInput.focus();
@@ -184,12 +184,26 @@ function bindLoginEvents(state) {
                     return;
                 }
 
-                // 로그인 성공
+                // 로그인 성공 → 세션 확인 후 이동
                 showAlert(
                     state,
                     `${state.idInput.value}님 환영합니다!`,
-                    () => {
-                        window.location.href = '/';
+                    async () => {
+                        try {
+                            const check = await fetch('/auth/me', {
+                                credentials: 'include'
+                            });
+
+                            if (!check.ok) {
+                                showAlert(state, '로그인 세션 확인에 실패했습니다.');
+                                return;
+                            }
+
+                            window.location.href = '/';
+
+                        } catch {
+                            showAlert(state, '세션 확인 중 오류가 발생했습니다.');
+                        }
                     }
                 );
 
@@ -200,7 +214,5 @@ function bindLoginEvents(state) {
     }
 
     // 로그아웃 버튼
-    if (state.logoutBtn) {
-        state.logoutBtn.addEventListener('click', () => logout(state));
-    }
+    state.logoutBtn?.addEventListener('click', () => logout(state));
 }
