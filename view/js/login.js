@@ -1,123 +1,218 @@
-//커밋 가능
-document.addEventListener('DOMContentLoaded', function () {
+// login.js
+// 역할: 로그인 화면 전담 컨트롤러 (Session 기반 로그인)
 
-    // 요소들 가져오기
-    const idInput = document.getElementById('userid');
-    const pwInput = document.getElementById('userpw');
-    const submitBtn = document.querySelector('.btn-submit');
-    const loginForm = document.querySelector('.login-form');
-    const errorMessage = document.querySelector('.error-message');
+document.addEventListener('DOMContentLoaded', () => {
+    const state = getInitialState();
+    initLoginUI(state);
+    bindLoginEvents(state);
+    checkInputValidity(state);
+    checkLoginStatus(state);   // 🔑 이미 로그인된 사용자 차단
+});
 
-    /* =========================================
-       [기능 1] 버튼 활성화/비활성화 체크 함수
-       ========================================= */
-    function checkInputValidity() {
-        // 아이디와 비밀번호가 둘 다 1글자 이상이면
-        if (idInput.value.length > 0 && pwInput.value.length > 0) {
-            submitBtn.disabled = false; // 버튼 활성화 (주황색 됨)
-        } else {
-            submitBtn.disabled = true;  // 버튼 비활성화 (회색 됨)
+/* =========================
+   [1] 상태 생성
+========================= */
+function getInitialState() {
+    return {
+        onConfirm: null,
+        isLoggedIn: false,
+        userId: null,
+
+        // DOM
+        idInput: null,
+        pwInput: null,
+        submitBtn: null,
+        loginForm: null,
+        logoutBtn: null,
+        errorMessage: null,
+
+        modal: null,
+        modalMsg: null,
+        modalBtn: null
+    };
+}
+
+/* =========================
+   [2] UI 초기화
+========================= */
+function initLoginUI(state) {
+    state.idInput = document.getElementById('userid');
+    state.pwInput = document.getElementById('userpw');
+    state.submitBtn = document.querySelector('.btn-submit');
+    state.loginForm = document.querySelector('.login-form');
+    state.logoutBtn = document.querySelector('.btn-logout');
+    state.errorMessage = document.querySelector('.error-message');
+
+    state.modal = document.getElementById('custom-alert');
+    state.modalMsg = document.querySelector('.modal-message');
+    state.modalBtn = document.getElementById('modal-ok-btn');
+}
+
+/* =========================
+   [3] 로직 함수
+========================= */
+
+// 입력값에 따라 로그인 버튼 활성/비활성
+function checkInputValidity(state) {
+    if (!state.idInput || !state.pwInput || !state.submitBtn) return;
+
+    state.submitBtn.disabled = !(
+        state.idInput.value.length > 0 &&
+        state.pwInput.value.length > 0
+    );
+}
+
+// 공통 알림 모달
+function showAlert(state, message, callback = null) {
+    if (!state.modal || !state.modalMsg) return;
+
+    state.modalMsg.textContent = message;
+    state.modal.classList.add('show');
+    state.onConfirm = callback;
+}
+
+// 로그인 payload
+function buildLoginPayload(state) {
+    return {
+        user_id: state.idInput.value,
+        user_pw: state.pwInput.value
+    };
+}
+
+// 로그인 상태 UI 반영
+function applyLoginState(state, userId) {
+    state.isLoggedIn = Boolean(userId);
+    state.userId = userId || null;
+    document.body.classList.toggle('logged-in', state.isLoggedIn);
+}
+
+/* =========================
+   [로그인 페이지 접근 가드]
+   이미 로그인된 경우 → 메인으로 이동
+========================= */
+async function checkLoginStatus(state) {
+    try {
+        const res = await fetch('/auth/me', {
+            credentials: 'include'
+        });
+
+        if (!res.ok) return;
+
+        const data = await res.json();
+
+        if (data.user_id) {
+            // 이미 로그인된 상태
+            window.location.replace('/');
         }
+    } catch {
+        console.warn('로그인 상태 확인 실패');
     }
+}
 
-    /* =========================================
-       [기능 2] 인풋 창 X 버튼 & 입력 감지
-       ========================================= */
-    const inputWrappers = document.querySelectorAll('.input-wrapper');
+// 로그아웃
+async function logout(state) {
+    try {
+        await fetch('/logout', {
+            method: 'POST',
+            credentials: 'include'
+        });
+        location.reload();
+    } catch {
+        showAlert(state, '로그아웃 중 오류가 발생했습니다.');
+    }
+}
 
-    inputWrappers.forEach(wrapper => {
+/* =========================
+   [4] 이벤트 바인딩
+========================= */
+function bindLoginEvents(state) {
+
+    // 입력 감지 & X 버튼
+    document.querySelectorAll('.input-wrapper').forEach(wrapper => {
         const input = wrapper.querySelector('input');
         const btnClear = wrapper.querySelector('.btn-clear');
-
         if (!input || !btnClear) return;
 
-        const updateBtnVisibility = () => {
-            if (input.value.length > 0) btnClear.classList.add('active');
-            else btnClear.classList.remove('active');
+        const updateClearBtn = () => {
+            btnClear.classList.toggle('active', input.value.length > 0);
         };
 
-        // ★ 글자를 칠 때마다 실행되는 것들
-        input.addEventListener('input', function () {
-            updateBtnVisibility();       // 1. X 버튼 보여줄까 말까?
-            checkInputValidity();        // 2. 로그인 버튼 켜줄까 말까? (추가된 기능)
-            if (errorMessage) errorMessage.classList.remove('show'); // 3. 에러 메시지 숨기기
+        input.addEventListener('input', () => {
+            updateClearBtn();
+            checkInputValidity(state);
+            state.errorMessage?.classList.remove('show');
         });
 
-        // X 버튼 클릭 시 초기화
-        btnClear.addEventListener('click', function () {
+        btnClear.addEventListener('click', () => {
             input.value = '';
             input.focus();
-            updateBtnVisibility();
-            checkInputValidity(); // ★ 지웠으니까 로그인 버튼도 다시 꺼야 함!
+            updateClearBtn();
+            checkInputValidity(state);
         });
     });
 
+    // 모달 확인 버튼
+    state.modalBtn?.addEventListener('click', () => {
+        state.modal.classList.remove('show');
+        if (state.onConfirm) state.onConfirm();
+        state.onConfirm = null;
+    });
 
-    /* =========================================
-       [기능 3] 커스텀 팝업 및 로그인 검사
-       ========================================= */
-    const modal = document.getElementById('custom-alert');
-    const modalMsg = document.querySelector('.modal-message');
-    const modalBtn = document.getElementById('modal-ok-btn');
-    let onConfirm = null;
+    // 로그인 요청
+    if (state.loginForm && state.submitBtn) {
+        state.loginForm.addEventListener('submit', async e => {
+            e.preventDefault();
+            if (state.submitBtn.disabled) return;
 
-    function showAlert(message, callback) {
-        if (!modal) return;
-        modalMsg.textContent = message;
-        modal.classList.add('show');
-        onConfirm = callback;
-    }
+            try {
+                const res = await fetch('/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify(buildLoginPayload(state))
+                });
 
-    if (modalBtn) {
-        modalBtn.addEventListener('click', function () {
-            modal.classList.remove('show');
-            if (onConfirm) {
-                onConfirm();
-                onConfirm = null;
+                const data = await res.json();
+
+                // 로그인 실패
+                if (!data.success) {
+                    state.errorMessage?.classList.add('show');
+                    state.idInput.value = '';
+                    state.pwInput.value = '';
+                    state.idInput.focus();
+                    checkInputValidity(state);
+                    return;
+                }
+
+                // 로그인 성공 → 세션 확인 후 이동
+                showAlert(
+                    state,
+                    `${state.idInput.value}님 환영합니다!`,
+                    async () => {
+                        try {
+                            const check = await fetch('/auth/me', {
+                                credentials: 'include'
+                            });
+
+                            if (!check.ok) {
+                                showAlert(state, '로그인 세션 확인에 실패했습니다.');
+                                return;
+                            }
+
+                            window.location.href = '/';
+
+                        } catch {
+                            showAlert(state, '세션 확인 중 오류가 발생했습니다.');
+                        }
+                    }
+                );
+
+            } catch {
+                showAlert(state, '서버와 통신 중 오류가 발생했습니다.');
             }
         });
     }
 
-   /* =========================================
-   [기능 4] 로그인 요청 (최종 정리본)
-   ========================================= */
-    loginForm.addEventListener('submit', async function (e) {
-        e.preventDefault();
-        if (submitBtn.disabled) return;
-
-        try {
-            const res = await fetch('/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    user_id: idInput.value,
-                    user_pw: pwInput.value
-                })
-            });
-
-            const data = await res.json();
-
-            // 로그인 실패
-            if (!data.success) {
-                errorMessage.classList.add('show');
-                idInput.value = '';
-                pwInput.value = '';
-                idInput.focus();
-                checkInputValidity();
-                return;
-            }
-
-            // 로그인 성공
-            localStorage.setItem('isLoggedIn', 'true');
-            localStorage.setItem('user_id', idInput.value);
-
-            showAlert(`${idInput.value}님 환영합니다!`, () => {
-                window.location.href = '/view/html/main.html';
-            });
-
-        } catch (err) {
-            showAlert('서버와 통신 중 오류가 발생했습니다.');
-        }
-    });
-    checkInputValidity();
-});
+    // 로그아웃 버튼
+    state.logoutBtn?.addEventListener('click', () => logout(state));
+}

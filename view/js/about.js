@@ -34,7 +34,7 @@ window.NPTI_DB = {
 // about.html 페이지 자체에서도 내용이 보여야 하므로 실행
 document.addEventListener('DOMContentLoaded', () => {
     const root = document.getElementById('aboutRoot');
-    if (root && !document.getElementById('aboutModal')) {
+    if (root) {
         renderNPTI(root);
     }
 });

@@ -1,6 +1,6 @@
-from fastapi import FastAPI, Depends, Query
+from fastapi import FastAPI, Depends, Query, Request, Body
 from fastapi.responses import FileResponse
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, RedirectResponse
 from starlette.staticfiles import StaticFiles
 from bigkinds_crawling.scheduler import sch_start
 from bigkinds_crawling.sample import sample_crawling, get_sample
@@ -13,15 +13,23 @@ from database import get_db
 from db_index.db_npti_type import get_all_npti_type, get_npti_type_by_group, npti_type_response
 from db_index.db_npti_code import get_all_npti_codes, get_npti_code_by_code, npti_code_response
 from db_index.db_npti_question import get_all_npti_questions, get_npti_questions_by_axis, npti_question_response
-from db_index.db_user_info import UserCreateRequest, insert_user
+from db_index.db_user_info import UserCreateRequest, insert_user, authenticate_user
 from db_index.user_npti import get_user_npti
 from sqlalchemy import text
-import hashlib
+from starlette.middleware.sessions import SessionMiddleware
 from elasticsearch import Elasticsearch, ConnectionError as ESConnectionError
+from datetime import timedelta
 
 app = FastAPI()
 logger = Logger().get_logger(__name__)
 app.mount("/view",StaticFiles(directory="view"), name="view")
+app.add_middleware(
+    SessionMiddleware,
+    secret_key="npti-secret-key",
+    # max_age=60 * 60 * 24, #1일
+    max_age=int(timedelta(minutes=5).total_seconds()),
+    same_site="lax"         # 기본 보안 옵션
+)
 
 @app.get("/")
 def main():
@@ -119,27 +127,28 @@ FIELD_MAP = {
 }
 
 @app.get("/search")
-def search_news(
-    q: str = Query(...),
-    fields: Optional[str] = "title,content,media,category",
-    sort: str = "accuracy",
-    page: int = 1,
-    size: int = 20
-):
-    # 1. 검색어 방어
+def main():
+    return FileResponse("view/html/search.html")
+
+@app.post("/search")
+def search_news(payload: dict = Body(...)):
+    # 1. 요청 데이터 추출
+    query_obj = payload.get("query", {}).get("multi_match", {})
+    q = query_obj.get("query", "")
+    fields = query_obj.get("fields", ["title", "content", "media", "category"])
+
+    from_idx = payload.get("from", 0)
+    size = payload.get("size", 20)
+    sort_option = payload.get("sort", ["_score"])
+
+    # 검색어 공백 방어
     if not q.strip():
-        return {"total": 0, "data": []}
+        return {"hits": {"total": {"value": 0}, "hits": []}}
 
-    # 2. fields 매핑
-    field_list = [
-        FIELD_MAP[f] for f in fields.split(",")
-        if f in FIELD_MAP
-    ]
+    # 2. 필드 매핑 및 검색 Body 구성 (FIELD_MAP을 통해 실제 토큰 필드명으로 변환)
+    field_list = [FIELD_MAP.get(f, f) for f in fields]
 
-    if not field_list:
-        field_list = ["title_tokens", "content_tokens"]
-
-    body = {
+    search_condition = {
         "query": {
             "multi_match": {
                 "query": q,
@@ -147,40 +156,26 @@ def search_news(
                 "operator": "or"
             }
         },
-        "from": (page - 1) * size,
-        "size": size
+        "from": from_idx,
+        "size": size,
+        "sort": sort_option
     }
 
-    if sort == "latest":
-        body["sort"] = [{"pubdate": {"order": "desc"}}]
-
-    # 핵심: ES 에러를 반드시 잡는다
     try:
+        # 3. ES 검색 실행 (JS 렌더링에 필요한 필드들을 _source에 명시)
         res = es.search(
             index="news_raw",
-            body=body,
-            _source=["title", "content", "media", "category", "pubdate"]
+            body=search_condition,
+            _source=["title", "content", "media", "category", "img", "pubdate"]
         )
+        return res  # Elasticsearch 응답 구조 그대로 반환
+
     except ESConnectionError as e:
-        logger.error(f"[ES ERROR] {e}")
-        return {
-            "total": 0,
-            "data": [],
-            "error": "Elasticsearch connection failed"
-        }
-
-    hits = [
-        {
-            "news_id": hit["_id"],
-            **hit["_source"]
-        }
-        for hit in res["hits"]["hits"]
-    ]
-
-    return {
-        "total": res["hits"]["total"]["value"],
-        "data": hits
-    }
+        logger.error(f"ES 연결 실패: {e}")
+        return {"hits": {"total": {"value": 0}, "hits": []}}
+    except Exception as e:
+        logger.error(f"검색 오류: {e}")
+        return {"hits": {"total": {"value": 0}, "hits": []}}
 
 
 if __name__ == "__main__":
@@ -237,18 +232,18 @@ def npti_question_by_axis(axis: str = Query(...), db: Session = Depends(get_db))
         logger.error(f"실행 중 오류 발생: {e}")
 
 # 가입용
-@app.post("/users")
-def create_user(req: UserCreateRequest, db: Session = Depends(get_db)):
-    try:
-        insert_user(db, req.model_dump())
-        db.commit()
-        logger.info(f"회원가입 성공: {req.user_id}")
-        return {"success": True, "msg": "회원가입에 성공했습니다"}
+@app.get("/signup")
+async def get_signup_page():
+    # 사용자가 /signup 주소로 들어오면 html 파일을 보여줍니다.
+    return FileResponse("view/html/signup.html")
 
-    except Exception as e:
-        db.rollback()
-        logger.error(f"회원가입 오류: {e}")
-        return {"success": False, "msg": "회원가입 처리 중 오류가 발생했습니다"}
+# 2. [POST] 회원가입 데이터 처리하기
+@app.post("/signup")
+def create_user(req: UserCreateRequest, db: Session = Depends(get_db)):
+    # DB에 사용자 저장
+    insert_user(db, req.model_dump())
+    db.commit()
+    return {"success":True}
 
 @app.get("/users/check-id")
 def check_user_id(user_id: str, db: Session = Depends(get_db)):
@@ -262,32 +257,58 @@ def check_user_id(user_id: str, db: Session = Depends(get_db)):
     return {"exists": exists}
 
 # 로그인
-def verify_password(raw_pw: str, hashed_pw: str) -> bool:
-    return hashlib.sha256(raw_pw.encode()).hexdigest() == hashed_pw
+@app.get("/login")
+def page_login():
+    return FileResponse("view/html/login.html")
 
 @app.post("/login")
-def login(req: dict, db: Session = Depends(get_db)):
-    user_id = req.get("user_id")
-    user_pw = req.get("user_pw")
+def login(req: dict, request: Request, db: Session = Depends(get_db)):
+    success = authenticate_user(
+        db,
+        req.get("user_id"),
+        req.get("user_pw")
+    )
 
-    sql = """
-        SELECT user_id, user_pw, activation
-        FROM user_info
-        WHERE user_id = :user_id
-    """
-    user = db.execute(text(sql), {"user_id": user_id}).fetchone()
+    if not success:
+        return {"success": False}
 
-    if not user:
-        return {"success": False, "msg": "아이디 또는 비밀번호 오류"}
+    # 세션 저장
+    request.session["user_id"] = req.get("user_id")
 
-    if not user.activation:
-        return {"success": False, "msg": "비활성화된 계정입니다"}
+    # JSON만 반환 (페이지 이동 X)
+    return {"success": True}
 
-    if not verify_password(user_pw, user.user_pw):
-        return {"success": False, "msg": "아이디 또는 비밀번호 오류"}
+    # 세션에 사용자 ID 저장
+    request.session["user_id"] = req.get("user_id")
+    return FileResponse("view/html/main.html")
 
-    logger.info(f"[LOGIN SUCCESS] {user_id}")
-    return {"success": True, "msg": "login success"}
+#로그인 상태를 확인
+@app.get("/auth/me")
+def auth_me(request: Request):
+    session = request.session
+
+    user_id = session.get("user_id")
+    npti_result = session.get("npti_result")
+
+    return {
+        # 로그인 여부
+        "isLoggedIn": bool(user_id),
+
+        # 세션 유효성 (이 요청에 도달했으면 True)
+        "isSessionValid": True,
+
+        # 부가 정보
+        "user_id": user_id,
+        "hasNPTI": bool(npti_result),
+        "nptiResult": npti_result
+    }
+
+@app.post("/logout")
+def logout(request: Request):
+    request.session.clear()
+    return {
+        "success": True
+    }
 
 @app.get("/api/about")
 def get_about(db: Session = Depends(get_db)):
@@ -346,24 +367,26 @@ def get_about(db: Session = Depends(get_db)):
     }
 
 # NPTI 결과 조회
-@app.get("/users/me/npti") # me = 사용자
+@app.get("/users/me/npti")
 def read_my_npti(
-    user_id: str = Query(..., description="임시 user_id (개발 단계)"),
+    request: Request,
     db: Session = Depends(get_db)
 ):
-    """
-    현재 로그인한 사용자(me)의 NPTI 결과 조회
-    ※ 지금은 auth가 없어서 user_id를 query로 받음
-    """
+    user_id = request.session.get("user_id")
 
-    logger.info(f"[GET] /users/me/npti user_id={user_id}")
+    # 로그인 안 됨 → 사실만 반환
+    if not user_id:
+        return {
+            "hasResult": False,
+            "reason": "not_logged_in"
+        }
 
     result = get_user_npti(db, user_id)
 
     if not result:
         return {
             "hasResult": False,
-            "message": "NPTI 결과가 없습니다"
+            "reason": "no_result"
         }
 
     return {
