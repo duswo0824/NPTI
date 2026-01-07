@@ -93,7 +93,7 @@ function createSearchCondition(keyword, page) {
 
     // 정렬 조건 (최신순일 경우 date 필드 기준)
     if (state.currentSort === 'latest') {
-        condition.sort = [{ "date": { "order": "desc" } }];
+        condition.sort = [{ "timestamp": { "order": "desc" } }];
     } else {
         condition.sort = ["_score"]; // 정확도순 (ES 기본 점수)
     }
@@ -199,7 +199,7 @@ function createPaginationHTML(totalItems) {
     const totalPages = Math.ceil(totalItems / CONFIG.ITEMS_PER_PAGE);
 
     // 페이지가 1개뿐이면 페이지네이션을 표시하지 않음
-    if (totalPages <= 1) return '';
+    // if (totalPages <= 1) return '';
 
     let html = `<div class="pagination" style="margin-top:30px; text-align:center;">`;
 
