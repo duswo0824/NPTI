@@ -1,6 +1,7 @@
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from Naver.naver_crawling import crawling_general_news, crawling_sports_news, crawler_naver
+from Naver.naver_crawling import crawling_general_news, crawling_sports_news, crawler_naver, run_fast_crawl, \
+    run_slow_crawl
 from algorithm.news_NPTI import classify_npti_fast
 from bigkinds_crawling.news_raw import news_crawling
 from bigkinds_crawling.news_aggr_grouping import news_aggr
@@ -80,14 +81,23 @@ def sch_start():
         next_run_time=(now + timedelta(seconds=5)).isoformat(timespec="seconds") # 함수명, 인자(튜플), 타임아웃(초)
     )
 
-    # 네이버 크롤러
+    # 네이버 크롤러(fast)
     sch.add_job(
         run_job_with_timeout,
-        'interval',
-        minutes=10,  # 10분마다 실행
-        id='crawler_naver',
-        args=[crawler_naver, (), 280],
+        trigger='interval',
+        minutes=10,
+        id='crawler_naver_fast',
+        args=[run_fast_crawl, (), 540],
         next_run_time=(now + timedelta(seconds=10)).isoformat(timespec="seconds")
+    )
+    # 네이버 크롤러(slow) # 스케줄러 시작 기준 7분 후 첫 실행
+    sch.add_job(
+        run_job_with_timeout,
+        trigger='interval',
+        minutes=30,
+        id='crawler_naver_slow',
+        args=[run_slow_crawl, (), 1680],
+        next_run_time=(now + timedelta(minutes=7)).isoformat(timespec="seconds")
     )
 
     # 2-2. 뉴스 집계 등록

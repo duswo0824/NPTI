@@ -388,7 +388,6 @@ def crawler_naver():
         return
     #run_fast_crawl() #서버시작시 시작
 
-
 def run_fast_crawl():
     driver = get_safe_driver()
     if not driver:
