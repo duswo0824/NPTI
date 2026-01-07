@@ -107,6 +107,14 @@ def search_news_row(id_:str):
         logger.error(f"ES 중복 확인 실패 {id_}: {e}")
         return False
 
+def search_news_condition(search_condition:dict):
+    try:
+        result = es.search(index=ES_INDEX, body=search_condition)
+        return result
+    except Exception as e:
+        logger.error(e)
+        return False
+
 
 
 
