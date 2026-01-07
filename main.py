@@ -14,7 +14,7 @@ from db_index.db_npti_type import get_all_npti_type, get_npti_type_by_group, npt
 from db_index.db_npti_code import get_all_npti_codes, get_npti_code_by_code, npti_code_response
 from db_index.db_npti_question import get_all_npti_questions, get_npti_questions_by_axis, npti_question_response
 from db_index.db_user_info import UserCreateRequest, insert_user, authenticate_user
-from db_index.user_npti import get_user_npti
+from db_index.db_user_npti import get_user_npti
 from sqlalchemy import text
 from starlette.middleware.sessions import SessionMiddleware
 from elasticsearch import Elasticsearch, ConnectionError as ESConnectionError
