@@ -67,7 +67,7 @@ function renderArticle(data){
     }
     const imgContainer = document.querySelector('div.img-placeholder');
     if (imgContainer && data.img) {
-        imgContainer.innerHTML = `<img src="${data.img}" style="height:100%, width:auto", alt="뉴스 이미지">`;
+        imgContainer.innerHTML = `<img src="${data.img}" style="height:100%;, width:auto;", alt="뉴스 이미지">`;
         imgContainer.style.display = 'block';
     } else if (imgContainer && !data.img){
         imgContainer.style.display = 'none';
@@ -90,7 +90,7 @@ function initRelatedNews(related_news) {
                     <h4>${item.title}</h4>
                     <div class="related-info"><span>${item.media}</span> | <span>${item.pubdate}</span></div>
                 </div>
-                <div class="related-img"><img src=item.img></div>
+                <div class="related-img"><img src=${item.img}></div>
             </a>`;
         relatedList.insertAdjacentHTML('beforeend', html);
     });
