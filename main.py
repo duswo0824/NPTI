@@ -19,6 +19,8 @@ from sqlalchemy import text
 from starlette.middleware.sessions import SessionMiddleware
 from elasticsearch import Elasticsearch, ConnectionError as ESConnectionError
 from datetime import timedelta
+from db_user_answer import insert_user_answers
+from db_user_npti import upsert_user_npti
 
 app = FastAPI()
 logger = Logger().get_logger(__name__)
@@ -125,6 +127,50 @@ FIELD_MAP = {
     "media": "media",
     "category": "category"
 }
+
+
+@app.get("/test")
+async def get_test_page():
+    return FileResponse("view/html/test.html")
+
+
+@app.get("/npti/q")
+async def get_questions(db: Session = Depends(get_db)):
+    query = text("SELECT question_id, question_text, npti_axis, question_ratio FROM db_npti_question")
+    result = db.execute(query).fetchall()
+    return [dict(row) for row in result]
+
+
+@app.post("/test")
+async def save_test_result(request: Request, payload: dict = Body(...), db: Session = Depends(get_db)):
+    user_id = request.session.get("user_id")
+
+    try:
+        # 1. 답변 데이터 가공 (insert_user_answers 형식에 맞춤)
+        answers_list = [
+            {"question_no": int(q_id.replace('q', '')), "answer_value": val}
+            for q_id, val in payload.get("answers", {}).items()
+        ]
+        insert_user_answers(db, user_id, answers_list)
+
+        # 2. NPTI 결과 데이터 가공 (upsert_user_npti 형식에 맞춤)
+        scores = payload.get("scores", {})
+        npti_params = {
+            "user_id": user_id,
+            "npti_code": payload.get("npti_result"),
+            "length_score": scores.get('length'),
+            "article_score": scores.get('article'),
+            "info_score": scores.get('info'),
+            "view_score": scores.get('view')
+        }
+        upsert_user_npti(db, npti_params)
+
+        db.commit()  # 최종 커밋
+        return {"success": True, "message": "저장 완료"}
+
+    except Exception as e:
+        db.rollback()
+        return JSONResponse(status_code=500, content={"success": False, "message": str(e)})
 
 @app.get("/search")
 def main():
