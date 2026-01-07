@@ -209,7 +209,7 @@ def classify_npti():
 
             try:
                 # 길이
-                length_type = "L" if len(content) >= 1200 else "S"
+                length_type = "L" if len(content) >= 1000 else "S"
 
                 # 예측
                 ct = model_ct.predict(tfidf_ct.transform([content]))[0]
@@ -304,7 +304,7 @@ def test_article_csv(input_csv, output_csv):
 # 벌크 기사 NPTI 분류 테스트 ==================================================================================
 if __name__ == "__main__":
     input_csv = r"NPTI_classify_test\sample_data_0107_v02.csv"
-    output_csv = r"NPTI_classify_test\sample_data_0107_v03_result.csv"
+    output_csv = r"NPTI_classify_test\sample_data_0107_v05_result.csv"
 
     test_article_csv(input_csv, output_csv)
 

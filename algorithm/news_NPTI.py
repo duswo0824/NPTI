@@ -114,7 +114,7 @@ def classify_npti_fast():
                 continue
 
             try:
-                length_type = "L" if len(content) >= 1200 else "S"
+                length_type = "L" if len(content) >= 1000 else "S"
                 ct = model_ct.predict(tfidf_ct.transform([content]))[0]
                 fi = model_fi.predict(tfidf_fi.transform([content]))[0]
                 pn = model_pn.predict(tfidf_pn.transform([content]))[0]
