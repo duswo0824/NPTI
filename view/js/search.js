@@ -131,7 +131,7 @@ async function executeSearch(page = 1) {
     const keyword = EL.input().value.trim();
     if (!keyword) return;
 
-    state.currentPage = page;
+    state.currentPage = page; // 페이지네이션 계산
     const result = await fetchNewsData(keyword, page);
 
     const totalCount = result?.hits?.total?.value || 0;
@@ -195,30 +195,39 @@ function updateSearchHeader(count, keyword) {
     `;
 }
 
+// 페이지네이션
 function createPaginationHTML(totalItems) {
-    const totalPages = Math.ceil(totalItems / CONFIG.ITEMS_PER_PAGE);
-
-    // 페이지가 1개뿐이면 페이지네이션을 표시하지 않음
-    // if (totalPages <= 1) return '';
+    const totalPages = Math.ceil(totalItems / CONFIG.ITEMS_PER_PAGE); //
+    if (totalPages <= 1) return ''; //
 
     let html = `<div class="pagination" style="margin-top:30px; text-align:center;">`;
 
-    // 처음 페이지로 이동 (《)
-    html += `<button class="arrow" ${state.currentPage === 1 ? 'disabled' : ''} data-page="1">《</button>`;
+    // 1. 기본 시작 페이지 계산 (2, 3...11 방식)
+    let startPage = 1;
+    if (state.currentPage > 10) {
+        startPage = state.currentPage - 9;
+    }
 
-    // 이전 페이지로 이동 (〈)
+    // 2. 끝 페이지 계산
+    let endPage = Math.min(totalPages, startPage + 9);
+
+    // [보완] 만약 endPage가 totalPages에 걸렸다면, startPage를 역으로 고정하여
+    // 마지막 구간에서도 항상 10개의 버튼이 보이도록 유지 (선택 사항)
+    if (endPage === totalPages && totalPages > 10) {
+        startPage = Math.max(1, endPage - 9);
+    }
+
+    // 처음/이전 버튼
+    html += `<button class="arrow" ${state.currentPage === 1 ? 'disabled' : ''} data-page="1">《</button>`;
     html += `<button class="arrow" ${state.currentPage === 1 ? 'disabled' : ''} data-page="${state.currentPage - 1}">〈</button>`;
 
-    // 최대 10개까지만 노출 (필요에 따라 로직 수정 가능)
-    for (let i = 1; i <= totalPages; i++) {
-        if (i > 10) break;
+    // 번호 생성
+    for (let i = startPage; i <= endPage; i++) {
         html += `<button class="page-num ${i === state.currentPage ? 'active' : ''}" data-page="${i}">${i}</button>`;
     }
 
-    // 다음 페이지로 이동 (〉)
+    // 다음/마지막 버튼
     html += `<button class="arrow" ${state.currentPage === totalPages ? 'disabled' : ''} data-page="${state.currentPage + 1}">〉</button>`;
-
-    // 마지막 페이지로 이동 (》)
     html += `<button class="arrow" ${state.currentPage === totalPages ? 'disabled' : ''} data-page="${totalPages}">》</button>`;
 
     html += `</div>`;
