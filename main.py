@@ -19,8 +19,8 @@ from sqlalchemy import text
 from starlette.middleware.sessions import SessionMiddleware
 from elasticsearch import Elasticsearch, ConnectionError as ESConnectionError
 from datetime import timedelta
-from db_user_answer import insert_user_answers
-from db_user_npti import upsert_user_npti
+from db_index.db_user_answers import insert_user_answers
+from db_index.db_user_npti import upsert_user_npti
 
 app = FastAPI()
 logger = Logger().get_logger(__name__)
