@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, Query, Request
+from fastapi import FastAPI, Depends, Query, Request, Body
 from fastapi.responses import FileResponse
 from starlette.responses import JSONResponse, RedirectResponse
 from starlette.staticfiles import StaticFiles
@@ -125,27 +125,28 @@ FIELD_MAP = {
 }
 
 @app.get("/search")
-def search_news(
-    q: str = Query(...),
-    fields: Optional[str] = "title,content,media,category",
-    sort: str = "accuracy",
-    page: int = 1,
-    size: int = 20
-):
-    # 1. 검색어 방어
+def main():
+    return FileResponse("view/html/search.html")
+
+@app.post("/search")
+def search_news(payload: dict = Body(...)):
+    # 1. 요청 데이터 추출
+    query_obj = payload.get("query", {}).get("multi_match", {})
+    q = query_obj.get("query", "")
+    fields = query_obj.get("fields", ["title", "content", "media", "category"])
+
+    from_idx = payload.get("from", 0)
+    size = payload.get("size", 20)
+    sort_option = payload.get("sort", ["_score"])
+
+    # 검색어 공백 방어
     if not q.strip():
-        return {"total": 0, "data": []}
+        return {"hits": {"total": {"value": 0}, "hits": []}}
 
-    # 2. fields 매핑
-    field_list = [
-        FIELD_MAP[f] for f in fields.split(",")
-        if f in FIELD_MAP
-    ]
+    # 2. 필드 매핑 및 검색 Body 구성 (FIELD_MAP을 통해 실제 토큰 필드명으로 변환)
+    field_list = [FIELD_MAP.get(f, f) for f in fields]
 
-    if not field_list:
-        field_list = ["title_tokens", "content_tokens"]
-
-    body = {
+    search_condition = {
         "query": {
             "multi_match": {
                 "query": q,
@@ -153,40 +154,26 @@ def search_news(
                 "operator": "or"
             }
         },
-        "from": (page - 1) * size,
-        "size": size
+        "from": from_idx,
+        "size": size,
+        "sort": sort_option
     }
 
-    if sort == "latest":
-        body["sort"] = [{"pubdate": {"order": "desc"}}]
-
-    # 핵심: ES 에러를 반드시 잡는다
     try:
+        # 3. ES 검색 실행 (JS 렌더링에 필요한 필드들을 _source에 명시)
         res = es.search(
             index="news_raw",
-            body=body,
-            _source=["title", "content", "media", "category", "pubdate"]
+            body=search_condition,
+            _source=["title", "content", "media", "category", "img", "pubdate"]
         )
+        return res  # Elasticsearch 응답 구조 그대로 반환
+
     except ESConnectionError as e:
-        logger.error(f"[ES ERROR] {e}")
-        return {
-            "total": 0,
-            "data": [],
-            "error": "Elasticsearch connection failed"
-        }
-
-    hits = [
-        {
-            "news_id": hit["_id"],
-            **hit["_source"]
-        }
-        for hit in res["hits"]["hits"]
-    ]
-
-    return {
-        "total": res["hits"]["total"]["value"],
-        "data": hits
-    }
+        logger.error(f"ES 연결 실패: {e}")
+        return {"hits": {"total": {"value": 0}, "hits": []}}
+    except Exception as e:
+        logger.error(f"검색 오류: {e}")
+        return {"hits": {"total": {"value": 0}, "hits": []}}
 
 
 if __name__ == "__main__":
