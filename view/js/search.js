@@ -202,18 +202,14 @@ function createPaginationHTML(totalItems) {
 
     let html = `<div class="pagination" style="margin-top:30px; text-align:center;">`;
 
-    // 1. 기본 시작 페이지 계산 (2, 3...11 방식)
-    let startPage = 1;
-    if (state.currentPage > 10) {
-        startPage = state.currentPage - 9;
-    }
+    // 현재 페이지에서 5를 빼서 시작점을 잡되, 최소값은 1로 고정
+    let startPage = Math.max(1, state.currentPage - 5);
 
-    // 2. 끝 페이지 계산
+    // 시작점을 기준으로 10개의 버튼을 보여주되, 전체 페이지 수를 넘지 않음
     let endPage = Math.min(totalPages, startPage + 9);
 
-    // [보완] 만약 endPage가 totalPages에 걸렸다면, startPage를 역으로 고정하여
-    // 마지막 구간에서도 항상 10개의 버튼이 보이도록 유지 (선택 사항)
-    if (endPage === totalPages && totalPages > 10) {
+    // [보정] 마지막 페이지 근처에서 버튼이 10개 미만이 되지 않도록 시작점 재조정
+    if (endPage === totalPages) {
         startPage = Math.max(1, endPage - 9);
     }
 
