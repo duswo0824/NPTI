@@ -212,9 +212,9 @@ def classify_npti():
                 length_type = "L" if len(content) >= 1000 else "S"
 
                 # 예측
-                ct = model_ct.predict(tfidf_ct.transform([content]))[0]
-                fi = model_fi.predict(tfidf_fi.transform([content]))[0]
-                pn = model_pn.predict(tfidf_pn.transform([content]))[0]
+                ct = model_ct.predict(tfidf_ct.transform([content]))[0].upper()
+                fi = model_fi.predict(tfidf_fi.transform([content]))[0].upper()
+                pn = model_pn.predict(tfidf_pn.transform([content]))[0].upper()
 
                 npti_code = length_type + ct + fi + pn
 
