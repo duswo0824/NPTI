@@ -1,5 +1,6 @@
 // 페이지 로딩 (기사 원문 + 관련 기사 포함)
 // ?news_id= 뒤에 들어온 news_id 기준
+let tracker = null;
 document.addEventListener('DOMContentLoaded', function () {
     const params = new URLSearchParams(window.location.search);
     const news_id = params.get('news_id');
@@ -14,13 +15,16 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 });
 
-document.addEventListener('beforeunload',
-});
+document.addEventListener('beforeunload',sendDataToServer);
 
 function sendDataToServer() {
+    if (!tracker) return;
     const finalData = tracker.stop();
+    if (!finalData || finalData.length == 0) return;
     const blob = new Blob([JSON.stringify(finalData)], {type: 'application/json'});
     navigator.sendBeacon('/save_behavior', blob);
+    console.log("데이터 전송 완료:", finalData.length);
+}
 
 
 // request에 대한 response 확인 -> 기사 원문 가져오기 -> 관련 기사가 있으면 관련 기사 가져오기
@@ -209,8 +213,9 @@ function userBehavior(intervalMs = 1000) {
         console.log("Data:", dataSnapshot, "total:", collectedData.length);
 
         if (collectedData.length >= 100) {
-            sendDataToServer(collectedData);
-            collectedData = [];
+//            sendDataToServer(collectedData);
+//            collectedData = [];
+            console.log("100개 수집 (전송 대기)")
         }
 
     }, intervalMs);
@@ -223,34 +228,10 @@ function userBehavior(intervalMs = 1000) {
             clearInterval(timerId);
             window.currentTracker = null;
             console.log("데이터 수집이 종료되었습니다.");
+            return collectedData;
         }
     };
     window.currentTracker = trackInstance;
     return trackInstance;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
