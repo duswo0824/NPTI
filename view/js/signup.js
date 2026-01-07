@@ -243,12 +243,13 @@ function bindSignupEvents(state) {
             });
 
             const data = await res.json();
+
             if (!data.success) return showAlert(state, '회원가입 실패');
 
             showAlert(
                 state,
                 '회원가입이 완료되었습니다!\n로그인 페이지로 이동합니다.',
-                () => window.location.href = '/view/html/login.html'
+                () => window.location.href = '/login'
             );
 
         } catch {

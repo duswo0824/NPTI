@@ -243,7 +243,7 @@ def create_user(req: UserCreateRequest, db: Session = Depends(get_db)):
     # DB에 사용자 저장
     insert_user(db, req.model_dump())
     db.commit()
-    return FileResponse("view/html/login.html")
+    return {"success":True}
 
 @app.get("/users/check-id")
 def check_user_id(user_id: str, db: Session = Depends(get_db)):
