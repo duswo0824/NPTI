@@ -125,16 +125,16 @@ def classify_npti_fast():
     news_id = None
     try:
         now = datetime.now(timezone(timedelta(hours=9)))
-        #since = now - timedelta(minutes=5)  # 5분 전 수집된 기사까지만 라벨링 # 이거랑 아래 쿼리문 주석 지워줘야됨
+        since = now - timedelta(minutes=5)  # 5분 전 수집된 기사까지만 라벨링 # 이거랑 아래 쿼리문 주석 지워줘야됨
 
         query = {
-            # "query": {
-            #     "range": {
-            #         "@timestamp": {
-            #             "gte": since.isoformat()
-            #         }
-            #     }
-            # },
+            "query": {
+                "range": {
+                    "@timestamp": {
+                        "gte": since.isoformat()
+                    }
+                }
+            },
             "_source": ["content"]
         }
         existing_ids = set(row[0] for row in db.query(ArticlesNPTI.news_id).all())
