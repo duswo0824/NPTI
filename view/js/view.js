@@ -1,16 +1,142 @@
+// [전역 변수] 수집된 데이터를 담을 배열과 현재 기사 ID
+let behaviorLogs = [];
+let currentNewsId = null;
+let tracker = null; // tracker 제어용 객체
+
+document.addEventListener('DOMContentLoaded', function () {
+    const params = new URLSearchParams(window.location.search);
+    const news_id = params.get('news_id');
+
+    if (news_id) {
+        currentNewsId = news_id; // 전역 변수에 할당 (나중에 전송할 때 사용)
+        loadArticleData(news_id);
+    } else {
+        alert("잘못된 접근입니다.");
+    }
+});
+
+// 페이지 이탈(닫기, 새로고침, 뒤로가기) 시 데이터 전송
+window.addEventListener('beforeunload', sendDataToServer);
+// 모바일 등 일부 환경 대비 (visibilitychange)
+document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'hidden') {
+        sendDataToServer();
+    }
+});
+
+function loadArticleData(news_id){
+    fetch(`/article/${news_id}`)
+        .then(response => {
+            if (!response.ok) throw new Error("기사를 불러오는데 실패했습니다.");
+            return response.json();
+        })
+        .then(data => {
+            renderArticle(data);
+
+            // [수정됨] 기사 로딩이 끝나면 행동 수집 시작!
+            if (!tracker) {
+                tracker = userBehavior(100); // 0.1초 간격 수집
+            }
+
+            if (data.related_news && data.related_news.length > 0){
+                initRelatedNews(data.related_news);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+        });
+}
+
+
+// 기사 원문 보여주기 (링크 있으면 원문 버튼 & 이미지 있으면 보여줌, 없으면 생략)
+function renderArticle(data){
+    document.getElementById('viewPress').innerText = data.media || "";
+    document.getElementById('viewTitle').innerText = data.title || "";
+    document.getElementById('viewCategory').innerText = data.category || "";
+    document.getElementById('viewDate').innerText = data.pubdate || "";
+    document.getElementById('viewAuthor').innerText = data.writer || "";
+    document.getElementById('viewCaption').innerText = data.imgCap || "";
+    document.getElementById('viewPress').innerText = data.media || "";
+    document.getElementById('viewBody').innerText = data.content || "";
+    const originBtn = document.querySelector('.btn-origin');
+    if (originBtn && data.link){
+        originBtn.onclick = function(){
+            window.open(data.link,'_blank');
+        }
+
+    }
+    const imgContainer = document.querySelector('div.img-placeholder');
+    if (imgContainer && data.img) {
+        imgContainer.innerHTML = `<img src="${data.img}" style="height:100%, width:auto", alt="뉴스 이미지">`;
+        imgContainer.style.display = 'block';
+    } else if (imgContainer && !data.img){
+        imgContainer.style.display = 'none';
+    }
+    const copyrightText = `이 기사의 저작권은 ${data.media || '해당 언론사'}에 있으며, 이를 무단으로 이용할 경우 법적 책임을 질 수 있습니다.`
+    document.getElementById('viewCopyright').innerText = copyrightText;
+}
+
+
+// 관련 기사 보여주기
+function initRelatedNews(related_news) {
+    const relatedList = document.getElementById('relatedList');
+    if (!relatedList) return;
+
+    relatedList.innerHTML = '';
+    related_news.forEach(item => {
+        const html = `
+            <a href="/article?news_id=${item.news_id}" class="related-item">
+                <div class="related-text">
+                    <h4>${item.title}</h4>
+                    <div class="related-info"><span>${item.media}</span> | <span>${item.pubdate}</span></div>
+                </div>
+                <div class="related-img"><img src=item.img></div>
+            </a>`;
+        relatedList.insertAdjacentHTML('beforeend', html);
+    });
+}
+
+function sendDataToServer() {
+    // 1. 보낼 데이터가 없으면 중단
+    if (!behaviorLogs || behaviorLogs.length === 0) return;
+
+    // 2. 최종 데이터 패키징
+    const payload = {
+        news_id: currentNewsId,
+        user_id: "guest", // 로그인 기능 구현 시 실제 ID로 교체
+        session_end_time: Date.now(),
+        total_logs: behaviorLogs.length,
+        logs: behaviorLogs // 쌓아둔 데이터 전체
+    };
+
+    // 3. 데이터 전송 (sendBeacon 사용 권장)
+    // sendBeacon은 페이지가 닫혀도 전송을 보장하며, POST로 전송됨.
+    const blob = new Blob([JSON.stringify(payload)], {type: 'application/json'});
+    const success = navigator.sendBeacon('/log/behavior', blob);
+
+    // 4. 전송 후 로그 초기화 (중복 전송 방지)
+    if (success) {
+        behaviorLogs = [];
+    } else {
+        // sendBeacon 실패 시 fetch로 시도 (keepalive 옵션 필수)
+        fetch('/log/behavior', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload),
+            keepalive: true
+        });
+        behaviorLogs = [];
+    }
+}
+
 function userBehavior(intervalMs = 100) {
-    // 1. 초기 상태 및 시작 시간 정의
-    const startTime = Date.now(); // [New] 수집 시작 시간 (정수)
-    let stepCount = 0;            // [New] 데이터 수집 회차 (0, 1, 2... 순차 증가)
+    let totalActiveMs = 0;
+    let lastCheckTime = Date.now();
 
     const state = {
-        currentX: 0,
-        currentY: 0,
-        cumulativeX: 0,
-        cumulativeY: 0,
-        lastX: null,
-        lastY: null,
-
+        currentX: 0, currentY: 0,
+        cumulativeX: 0, cumulativeY: 0,
+        lastX: null, lastY: null,
         scrollTop: window.scrollY || window.pageYOffset,
         cumulativeScrollY: 0,
         lastScrollTop: window.scrollY || window.pageYOffset
@@ -18,9 +144,7 @@ function userBehavior(intervalMs = 100) {
 
     const targetDiv = document.getElementById('viewBody');
 
-    const isPageActive = () => {
-        return !document.hidden && document.hasFocus();
-    };
+    const isPageActive = () => !document.hidden && document.hasFocus();
 
     const handleMouseMove = (e) => {
         if (!isPageActive()) return;
@@ -28,7 +152,7 @@ function userBehavior(intervalMs = 100) {
         const y = e.pageY;
         state.currentX = x;
         state.currentY = y;
-        if (state.lastX !== null && state.lastY !==null){
+        if (state.lastX !== null && state.lastY !== null){
             state.cumulativeX += Math.abs(x - state.lastX);
             state.cumulativeY += Math.abs(y - state.lastY);
         }
@@ -40,78 +164,86 @@ function userBehavior(intervalMs = 100) {
         if (!isPageActive()) return;
         const currentScrollY = window.scrollY || window.pageYOffset || document.documentElement.scrollTop;
         state.scrollTop = currentScrollY;
-
         if (state.lastScrollTop !== null) {
-            const delta = Math.abs(currentScrollY - state.lastScrollTop);
-            state.cumulativeScrollY += delta;
+            state.cumulativeScrollY += Math.abs(currentScrollY - state.lastScrollTop);
         }
         state.lastScrollTop = currentScrollY;
     };
 
-    // 전역 리스너 등록
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('scroll', handleScroll);
 
-    // 주기적 데이터 수집 (Interval)
     const timerId = setInterval(() => {
-        if (!isPageActive()) {
-            return;
-        }
+        const now = Date.now();
+        const timeDelta = now - lastCheckTime;
+        lastCheckTime = now;
 
-        // [New] Step 증가 (데이터 순번)
-        stepCount++;
+        if (!isPageActive()) return;
 
-        // 타겟과의 거리 계산
+        totalActiveMs += timeDelta;
+
+        const winWidth = window.innerWidth || 1;
+        const winHeight = window.innerHeight || 1;
+        const scrollX = window.scrollX || window.pageXOffset;
+        const scrollY = window.scrollY || window.pageYOffset;
+
+        // Rescaling Logic (요청하신 부분)
+        let normMouseX = (state.currentX - scrollX) / winWidth;
+        let normMouseY = (state.currentY - scrollY) / winHeight;
+        let normMMF_X = state.cumulativeX / winWidth;
+        let normMMF_Y = state.cumulativeY / winHeight;
+        let normMSF_Y = state.cumulativeScrollY / winHeight;
+
         let distance = -1;
+        let baseline = 0;
+
         if (targetDiv) {
             const rect = targetDiv.getBoundingClientRect();
-            const scrollX = window.scrollX || window.pageXOffset;
-            const scrollY = window.scrollY || window.pageYOffset;
+            // Document 기준 좌표로 변환
+            const absLeft = rect.left + scrollX;
+            const absTop = rect.top + scrollY;
+            const absRight = absLeft + rect.width;
+            const absBottom = absTop + rect.height;
 
-            const divCenterX = rect.left + scrollX + (rect.width / 2);
-            const divCenterY = rect.top + scrollY + (rect.height / 2);
+            const divCenterX = absLeft + (rect.width / 2);
+            const divCenterY = absTop + (rect.height / 2);
 
             distance = Math.sqrt(
                 Math.pow(state.currentX - divCenterX, 2) +
                 Math.pow(state.currentY - divCenterY, 2)
             );
+
+            const isHovering = (
+                state.currentX >= absLeft && state.currentX <= absRight &&
+                state.currentY >= absTop && state.currentY <= absBottom
+            );
+
+            baseline = isHovering ? 1 : (distance > 0 ? (1 / distance) : 0);
         }
 
-        // 현재 시간 (정수)
-        const now = Date.now();
-
-        // 최종 데이터 패키징
         const dataSnapshot = {
-            // [Modified] 타임스탬프: 1970년 1월 1일 이후 흐른 밀리초 (정수)
-            // 예: 1735689000123
             timestamp: now,
-
-            // [New] 경과 시간: 시작 후 흐른 밀리초 (0, 100, 200...) - 분석 시 가장 유용
-            elapsedMs: now - startTime,
-
-            // [New] 수집 순번: 1, 2, 3... (누락된 데이터 확인 용도)
-            step: stepCount,
-
-            mouseX: Math.round(state.currentX), // 좌표도 정수로 반올림 처리 (선택사항)
-            mouseY: Math.round(state.currentY),
-            accX: Math.floor(state.cumulativeX),
-            accY: Math.floor(state.cumulativeY),
-            accScrollY: Math.floor(state.cumulativeScrollY),
-            distTarget: parseFloat(distance.toFixed(2)) // 숫자형으로 변환
+            elapsedMs: totalActiveMs,
+            mouseX: parseFloat(normMouseX.toFixed(4)),
+            mouseY: parseFloat(normMouseY.toFixed(4)),
+            MMF_X: parseFloat(normMMF_X.toFixed(4)),
+            MMF_Y: parseFloat(normMMF_Y.toFixed(4)),
+            MSF_Y: parseFloat(normMSF_Y.toFixed(4)),
+            distTarget: parseFloat(distance.toFixed(2)),
+            baseline: parseFloat(baseline.toFixed(6))
         };
 
-        // 데이터를 배열에 넣어서 전송하는 로직 필요
-        console.log("Data:", dataSnapshot);
+        // [수정됨] 콘솔 출력 대신 전역 배열에 저장
+        behaviorLogs.push(dataSnapshot);
+        // console.log("Collected:", behaviorLogs.length); // 디버깅용
 
     }, intervalMs);
 
-    // 클린업 함수
     return {
         stop: () => {
             window.removeEventListener('mousemove', handleMouseMove);
             window.removeEventListener('scroll', handleScroll);
             clearInterval(timerId);
-            console.log("데이터 수집이 종료되었습니다.");
         }
     };
 }
