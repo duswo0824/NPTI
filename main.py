@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, Query, Request
+from fastapi import FastAPI, Depends, Query, Request, Body
 from fastapi.responses import FileResponse
 from starlette.responses import JSONResponse, RedirectResponse
 from starlette.staticfiles import StaticFiles
@@ -18,6 +18,7 @@ from db_index.user_npti import get_user_npti
 from sqlalchemy import text
 from starlette.middleware.sessions import SessionMiddleware
 from elasticsearch import Elasticsearch, ConnectionError as ESConnectionError
+from datetime import timedelta
 
 app = FastAPI()
 logger = Logger().get_logger(__name__)
@@ -25,7 +26,8 @@ app.mount("/view",StaticFiles(directory="view"), name="view")
 app.add_middleware(
     SessionMiddleware,
     secret_key="npti-secret-key",
-    max_age=60 * 60 * 24, #1일
+    # max_age=60 * 60 * 24, #1일
+    max_age=int(timedelta(minutes=5).total_seconds()),
     same_site="lax"         # 기본 보안 옵션
 )
 
@@ -125,27 +127,28 @@ FIELD_MAP = {
 }
 
 @app.get("/search")
-def search_news(
-    q: str = Query(...),
-    fields: Optional[str] = "title,content,media,category",
-    sort: str = "accuracy",
-    page: int = 1,
-    size: int = 20
-):
-    # 1. 검색어 방어
+def main():
+    return FileResponse("view/html/search.html")
+
+@app.post("/search")
+def search_news(payload: dict = Body(...)):
+    # 1. 요청 데이터 추출
+    query_obj = payload.get("query", {}).get("multi_match", {})
+    q = query_obj.get("query", "")
+    fields = query_obj.get("fields", ["title", "content", "media", "category"])
+
+    from_idx = payload.get("from", 0)
+    size = payload.get("size", 20)
+    sort_option = payload.get("sort", ["_score"])
+
+    # 검색어 공백 방어
     if not q.strip():
-        return {"total": 0, "data": []}
+        return {"hits": {"total": {"value": 0}, "hits": []}}
 
-    # 2. fields 매핑
-    field_list = [
-        FIELD_MAP[f] for f in fields.split(",")
-        if f in FIELD_MAP
-    ]
+    # 2. 필드 매핑 및 검색 Body 구성 (FIELD_MAP을 통해 실제 토큰 필드명으로 변환)
+    field_list = [FIELD_MAP.get(f, f) for f in fields]
 
-    if not field_list:
-        field_list = ["title_tokens", "content_tokens"]
-
-    body = {
+    search_condition = {
         "query": {
             "multi_match": {
                 "query": q,
@@ -153,40 +156,26 @@ def search_news(
                 "operator": "or"
             }
         },
-        "from": (page - 1) * size,
-        "size": size
+        "from": from_idx,
+        "size": size,
+        "sort": sort_option
     }
 
-    if sort == "latest":
-        body["sort"] = [{"pubdate": {"order": "desc"}}]
-
-    # 핵심: ES 에러를 반드시 잡는다
     try:
+        # 3. ES 검색 실행 (JS 렌더링에 필요한 필드들을 _source에 명시)
         res = es.search(
             index="news_raw",
-            body=body,
-            _source=["title", "content", "media", "category", "pubdate"]
+            body=search_condition,
+            _source=["title", "content", "media", "category", "img", "pubdate"]
         )
+        return res  # Elasticsearch 응답 구조 그대로 반환
+
     except ESConnectionError as e:
-        logger.error(f"[ES ERROR] {e}")
-        return {
-            "total": 0,
-            "data": [],
-            "error": "Elasticsearch connection failed"
-        }
-
-    hits = [
-        {
-            "news_id": hit["_id"],
-            **hit["_source"]
-        }
-        for hit in res["hits"]["hits"]
-    ]
-
-    return {
-        "total": res["hits"]["total"]["value"],
-        "data": hits
-    }
+        logger.error(f"ES 연결 실패: {e}")
+        return {"hits": {"total": {"value": 0}, "hits": []}}
+    except Exception as e:
+        logger.error(f"검색 오류: {e}")
+        return {"hits": {"total": {"value": 0}, "hits": []}}
 
 
 if __name__ == "__main__":
@@ -273,11 +262,7 @@ def page_login():
     return FileResponse("view/html/login.html")
 
 @app.post("/login")
-def login(
-    req: dict,
-    request: Request,
-    db: Session = Depends(get_db)
-):
+def login(req: dict, request: Request, db: Session = Depends(get_db)):
     success = authenticate_user(
         db,
         req.get("user_id"),
@@ -287,6 +272,12 @@ def login(
     if not success:
         return {"success": False}
 
+    # 세션 저장
+    request.session["user_id"] = req.get("user_id")
+
+    # JSON만 반환 (페이지 이동 X)
+    return {"success": True}
+
     # 세션에 사용자 ID 저장
     request.session["user_id"] = req.get("user_id")
     return FileResponse("view/html/main.html")
@@ -294,17 +285,30 @@ def login(
 #로그인 상태를 확인
 @app.get("/auth/me")
 def auth_me(request: Request):
-    user_id = request.session.get("user_id")
+    session = request.session
+
+    user_id = session.get("user_id")
+    npti_result = session.get("npti_result")
 
     return {
-        "loggedIn": bool(user_id),
-        "user_id": user_id  # 서버가 기억하고 있는 사용자 ID
+        # 로그인 여부
+        "isLoggedIn": bool(user_id),
+
+        # 세션 유효성 (이 요청에 도달했으면 True)
+        "isSessionValid": True,
+
+        # 부가 정보
+        "user_id": user_id,
+        "hasNPTI": bool(npti_result),
+        "nptiResult": npti_result
     }
 
 @app.post("/logout")
 def logout(request: Request):
     request.session.clear()
-    return FileResponse("view/html/main.html")
+    return {
+        "success": True
+    }
 
 @app.get("/api/about")
 def get_about(db: Session = Depends(get_db)):
