@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Depends, Query, Request
 from fastapi.responses import FileResponse
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, RedirectResponse
 from starlette.staticfiles import StaticFiles
 from bigkinds_crawling.scheduler import sch_start
 from bigkinds_crawling.sample import sample_crawling, get_sample
@@ -242,14 +242,19 @@ def npti_question_by_axis(axis: str = Query(...), db: Session = Depends(get_db))
     except Exception as e:
         logger.error(f"실행 중 오류 발생: {e}")
 
-
 # 가입용
+@app.get("/signup")
+async def get_signup_page():
+    # 사용자가 /signup 주소로 들어오면 html 파일을 보여줍니다.
+    return FileResponse("view/html/signup.html")
+
+# 2. [POST] 회원가입 데이터 처리하기
 @app.post("/signup")
 def create_user(req: UserCreateRequest, db: Session = Depends(get_db)):
+    # DB에 사용자 저장
     insert_user(db, req.model_dump())
     db.commit()
-    return {"success": True}
-
+    return FileResponse("view/html/login.html")
 
 @app.get("/users/check-id")
 def check_user_id(user_id: str, db: Session = Depends(get_db)):
@@ -263,6 +268,10 @@ def check_user_id(user_id: str, db: Session = Depends(get_db)):
     return {"exists": exists}
 
 # 로그인
+@app.get("/login")
+def page_login():
+    return FileResponse("view/html/login.html")
+
 @app.post("/login")
 def login(
     req: dict,
@@ -280,7 +289,7 @@ def login(
 
     # 세션에 사용자 ID 저장
     request.session["user_id"] = req.get("user_id")
-    return {"success": True}
+    return FileResponse("view/html/main.html")
 
 #로그인 상태를 확인
 @app.get("/auth/me")
@@ -295,7 +304,7 @@ def auth_me(request: Request):
 @app.post("/logout")
 def logout(request: Request):
     request.session.clear()
-    return {"success": True}
+    return FileResponse("view/html/main.html")
 
 @app.get("/api/about")
 def get_about(db: Session = Depends(get_db)):

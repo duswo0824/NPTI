@@ -189,7 +189,7 @@ function bindLoginEvents(state) {
                     state,
                     `${state.idInput.value}님 환영합니다!`,
                     () => {
-                        window.location.href = '/view/html/main.html';
+                        window.location.href = '/';
                     }
                 );
 
