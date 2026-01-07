@@ -29,6 +29,7 @@ Korpora
 scikit-learn
 xgboost
 lightgbm
+joblib
 
 # 시각화
 matplotlib
