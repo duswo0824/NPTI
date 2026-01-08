@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 from logger import Logger
 from pydantic import BaseModel
+from sqlalchemy import text
 
 logger = Logger().get_logger(__name__)
 
@@ -16,7 +17,7 @@ class npti_code_response(BaseModel):
 def get_all_npti_codes(db: Session):
     logger.info("npti_code 전체 조회")
 
-    sql = """
+    sql = text("""
         select
             npti_code,
             length_type,
@@ -27,14 +28,14 @@ def get_all_npti_codes(db: Session):
             type_de
         from npti_code
         order by npti_code
-    """
+    """)
     return db.execute(sql).mappings().all()
 
 
 def get_npti_code_by_code(db: Session, code: str):
     logger.info(f"npti_code 단일 조회: {code}")
 
-    sql = """
+    sql = text("""
         select
             npti_code,
             length_type,
@@ -45,5 +46,5 @@ def get_npti_code_by_code(db: Session, code: str):
             type_de
         from npti_code
         where npti_code = :code
-    """
+    """)
     return db.execute(sql, {"code": code}).mappings().first()
