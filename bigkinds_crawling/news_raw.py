@@ -130,7 +130,7 @@ def news_crawling(max_pages: int):
                         "news_id": news_id, "link": link, "title": title,
                         "media": media, "category": category, "writer": writer,
                         "content": content, "pubdate": pubdate, "img": img,
-                        "imgCap": imgCap, "tag": tag, "timestamp": timestamp
+                        "imgCap": imgCap, "tag": tag, "timestamp": timestamp, "classified":False
                     }
 
                     sample.append(news_data)
