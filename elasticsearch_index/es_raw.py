@@ -57,7 +57,8 @@ def ensure_news_raw():
                 },
                 "writer_tokens": {
                     "type": "text", "analyzer": "korean_whitespace"
-                }
+                },
+                "classified": {"type":"boolean"},
             }
         }
     }
