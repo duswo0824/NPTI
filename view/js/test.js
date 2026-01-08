@@ -11,7 +11,7 @@ const EL = {
 
 const API = {
     GET_QUESTIONS: '/npti/q', // 백엔드 질문 db
-    SAVE_RESULT: '/npti/save' // 백엔드 설문 유저 응답 db
+    SAVE_RESULT: '/test' // 백엔드 설문 유저 응답 db
 };
 
 // 2. 메인 실행 DOMContentLoaded
@@ -155,8 +155,6 @@ async function handleTestSubmit(e) {
     const result = await saveNPTIResult(payload);
     if (result.success) {
         console.log("저장 성공");
-        localStorage.setItem('hasNPTI', 'true');
-        localStorage.setItem('nptiResult', type);
         showModal(); // 완료 모달 표시
     } else {
         console.error("저장 실패:", result.message);

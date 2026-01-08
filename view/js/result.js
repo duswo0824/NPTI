@@ -58,7 +58,7 @@ async function initResultPage() {
     const { user_npti, code_info, all_types } = res;
 
     // A. 텍스트 정보 삽입 (db_npti_code 데이터 연결)
-    if (EL.userName()) EL.userName().textContent = localStorage.getItem('userName') || "독자";
+    if (EL.userName()) EL.userName().textContent = userName || "독자";
     if (EL.nptiCode()) EL.nptiCode().textContent = user_npti.npti_code;
     if (EL.nptiName()) EL.nptiName().textContent = code_info.type_nick;
     if (EL.resultSummary()) {
@@ -152,6 +152,5 @@ function renderChartItem(key, pair, score, idx) {
 // 5. 이벤트 핸들러 및 페이지 이동
 function handleGoMain() {
     // 메인 페이지(큐레이션)로 이동 전 상태 기록
-    localStorage.setItem('hasNPTI', 'true');
     location.href = "/";
 }
