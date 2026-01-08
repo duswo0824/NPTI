@@ -11,7 +11,7 @@ const EL = {
 const CONFIG = {
     ITEMS_PER_PAGE: 20,
     API_ENDPOINT: '/search', // 파이썬 백엔드 연결 엔드포인트
-    BASE_VIEW_URL: '/view/html/view.html'
+    BASE_VIEW_URL: '/article'
 };
 
 let state = {

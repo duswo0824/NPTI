@@ -9,9 +9,7 @@
 7. 이벤트 핸들러 및 모달 관리
 */
 
-/* =====================================================
-   1. 전역 상수 및 상태 변수
-===================================================== */
+// 1. 전역 상수 및 상태 변수
 const CAT_NAMES = {
     all: '전체', politics: '정치', economy: '경제', society: '사회',
     culture: '생활/문화', it: 'IT/과학', world: '세계',
@@ -39,9 +37,7 @@ let globalSession = {
     nptiResult: null
 };
 
-/* =====================================================
-   2. Session 상태 로딩 (단일 진실 소스)
-===================================================== */
+// 2. Session 상태 로딩 (단일 진실 소스)
 async function loadSessionState() {
     try {
         const res = await fetch('/auth/me', { credentials: 'include' });
@@ -52,9 +48,7 @@ async function loadSessionState() {
     }
 }
 
-/* =====================================================
-   3. 메인 실행
-===================================================== */
+// 3. 메인 실행 DOMContentLoaded
 document.addEventListener('DOMContentLoaded', async () => {
 
     // 1. 서버에서 세션 정보 가져오기
@@ -114,18 +108,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 });
 
-/* =====================================================
-   4. 데이터 & 헬퍼
-===================================================== */
+// 4. 데이터 & 헬퍼
 function getCategoryFromTab(tab) {
     return tab.dataset.category ||
         Object.entries(CAT_NAMES).find(([, v]) => v === tab.innerText.trim())?.[0] ||
         'all';
 }
 
-/* 뉴스 데이터 생성
-   (1번 코드 로직 복구: 세션 상태에 따라 [NPTI PICK] 또는 [성향] 표시)
-*/
+/* 뉴스 데이터 생성 (세션 상태에 따라 [NPTI PICK] 또는 [성향] 표시) */
 function getNewsData(category) {
     const name = CAT_NAMES[category] || '전체';
     const { isLoggedIn, nptiResult } = globalSession;
@@ -153,52 +143,71 @@ function getNewsData(category) {
     return data;
 }
 
-/* =====================================================
-   5. UI 컴포넌트 (CSS 복구를 위해 HTML 구조 1번으로 롤백)
-===================================================== */
+// 5. UI 컴포넌트 (CSS 복구를 위해 HTML 구조 1번으로 롤백)
 
-/* Ticker */
-function initTicker() {
+/* Ticker : ES 데이터 기반 속보 추출 및 애니메이션 */
+async function initTicker() {
     const list = document.getElementById('ticker-list');
+    const tickerSection = document.querySelector('.ticker-section'); // 래퍼 요소
     if (!list) return;
 
-    // 데이터 생성
-    const breakingNewsData = Array.from({ length: 5 }, (_, i) => ({
-        id: `breaking_${i + 1}`,
-        title: `[속보] 관련 주요 뉴스 헤드라인 예시 ${i + 1}번입니다`
-    }));
+    try {
+        // 1. 서버에서 분석된 속보 데이터 가져오기
+        const response = await fetch('/news/ticker');
+        const result = await response.json();
+        const breakingNewsData = result.data || [];
 
-    list.innerHTML = '';
-    breakingNewsData.forEach(item => {
-        const li = document.createElement('li');
-        li.className = 'ticker-item';
-        li.innerHTML = `<a href="/view/html/view.html?id=${item.id}" class="ticker-link">${item.title}</a>`;
-        list.appendChild(li);
-    });
-
-    if (breakingNewsData.length > 0) {
-        list.appendChild(list.firstElementChild.cloneNode(true));
-    }
-
-    let currentIndex = 0;
-    const itemHeight = 24;
-
-    setInterval(() => {
-        currentIndex++;
-        list.style.transition = 'transform 1s ease';
-        list.style.transform = `translateY(-${currentIndex * itemHeight}px)`;
-
-        if (currentIndex === breakingNewsData.length) {
-            setTimeout(() => {
-                list.style.transition = 'none';
-                currentIndex = 0;
-                list.style.transform = `translateY(0px)`;
-            }, 1000);
+        // 2. 0건일 경우 영역 숨기기
+        if (breakingNewsData.length === 0) {
+            if (tickerSection) tickerSection.style.display = 'none';
+            return;
+        } else {
+            if (tickerSection) tickerSection.style.display = 'block';
         }
-    }, 3000);
+
+        // 3. UI 렌더링
+        list.innerHTML = '';
+        breakingNewsData.forEach(item => {
+            const li = document.createElement('li');
+            li.className = 'ticker-item';
+            // ES 데이터 필드명에 맞춰 수정 (title, _id 등)
+            li.innerHTML = `<a href="/article?id=${item._id}" class="ticker-link">${item.title}</a>`;
+            list.appendChild(li);
+        });
+
+        // 4. 무한 루프를 위한 첫 번째 요소 복제
+        if (breakingNewsData.length > 0) {
+            list.appendChild(list.firstElementChild.cloneNode(true));
+        }
+
+        // 5. 애니메이션 로직
+        let currentIndex = 0;
+        const itemHeight = 24;
+
+        // 기존 인터벌이 있다면 제거 (재호출 시 대비)
+        if (window.tickerInterval) clearInterval(window.tickerInterval);
+
+        window.tickerInterval = setInterval(() => {
+            currentIndex++;
+            list.style.transition = 'transform 1s ease';
+            list.style.transform = `translateY(-${currentIndex * itemHeight}px)`;
+
+            if (currentIndex === breakingNewsData.length) {
+                setTimeout(() => {
+                    list.style.transition = 'none';
+                    currentIndex = 0;
+                    list.style.transform = `translateY(0px)`;
+                }, 1000);
+            }
+        }, 3000);
+
+    } catch (err) {
+        console.error("속보 로드 중 오류:", err);
+        if (tickerSection) tickerSection.style.display = 'none';
+    }
 }
 
-/* Slider (HTML 구조 복구됨) */
+/* Slider */
 function initSlider(category) {
     const track = document.getElementById('slider-track');
     const paginationContainer = document.getElementById('pagination-dots');
@@ -220,11 +229,11 @@ function initSlider(category) {
     let isTransitioning = false;
     let dots = [];
 
-    // [CSS 복구 포인트] 1번 코드의 HTML 구조 사용 (img-box, text-box)
+    // img-box, text-box
     currentData.forEach((news, index) => {
         const slide = document.createElement('a');
         slide.className = 'hero-slide';
-        slide.href = `/view/html/view.html?id=${news.id}`;
+        slide.href = `/article?id=${news.id}`;
         slide.innerHTML = `
             <div class="slide-img-box">
                 ${news.img ? `<img src="${news.img}" alt="뉴스 이미지">` : `<i class="fa-regular fa-image"></i>`}
@@ -299,7 +308,7 @@ function initSlider(category) {
     setTimeout(startAutoSlide, 100);
 }
 
-/* Grid (HTML 구조 복구됨) */
+/* Grid */
 function initGrid(category) {
     const gridContainer = document.getElementById('news-grid');
     if (!gridContainer) return;
@@ -311,8 +320,8 @@ function initGrid(category) {
     for (let i = 1; i <= 9; i++) {
         const item = document.createElement('a');
         item.className = 'grid-item';
-        // [CSS 복구 포인트] 1번 코드의 HTML 구조 사용 (grid-thumb, grid-title)
-        item.href = `/view/html/view.html?id=${type}_${i}`;
+        // grid-thumb, grid-title
+        item.href = `/article?id=${type}_${i}`;
 
         item.innerHTML = `
             <div class="grid-thumb"><i class="fa-regular fa-image"></i></div>
@@ -322,9 +331,7 @@ function initGrid(category) {
     }
 }
 
-/* =====================================================
-   6. NPTI 개인화 (Badge + 색상)
-===================================================== */
+// 6. NPTI 개인화 (Badge + 색상)
 function updateHeaderTitle(nptiResult) {
     const titleArea = document.querySelector('.section-pick .title-area');
     if (!titleArea) return;
@@ -402,9 +409,7 @@ function updateBadgeDisplay(index, code) {
     }
 }
 
-/* =====================================================
-   7. 이벤트 & 모달 / 접근 가드
-===================================================== */
+// 7. 이벤트 & 모달 / 접근 가드
 function setupGlobalEvents(isLoggedIn, hasNPTI) {
 
     // (1) [상단] 메인 슬라이더 탭 이벤트
@@ -514,7 +519,7 @@ function setupGlobalEvents(isLoggedIn, hasNPTI) {
     document.getElementById('closeLoginGuard')?.addEventListener('click', () => toggleModal('loginGuardModal', false));
     document.getElementById('goToLogin')?.addEventListener('click', () => location.href = "/login");
     document.getElementById('closeNPTIGuard')?.addEventListener('click', () => toggleModal('hasNPTIGuardModal', false));
-    document.getElementById('goToTest')?.addEventListener('click', () => location.href = "/view/html/test.html");
+    document.getElementById('goToTest')?.addEventListener('click', () => location.href = "/test");
     document.getElementById('closeLogout')?.addEventListener('click', () => toggleModal('logoutModal', false));
 
     // 로그아웃 확인
@@ -557,7 +562,7 @@ function updateNPTIButton(hasNPTI) {
     const btn = document.querySelector('.btn-bubble');
     if (!btn) return;
     btn.innerText = hasNPTI ? '나의 NPTI 뉴스 더보기' : '나의 뉴스 성향 알아보기';
-    btn.href = hasNPTI ? '/view/html/curation.html' : '/view/html/test.html';
+    btn.href = hasNPTI ? '/view/html/curation.html' : '/test';
     if(hasNPTI) btn.classList.add('npti-done');
     else btn.classList.remove('npti-done');
 }

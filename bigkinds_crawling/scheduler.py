@@ -2,7 +2,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from Naver.naver_crawling import crawling_general_news, crawling_sports_news, crawler_naver, run_fast_crawl, \
     run_slow_crawl
-from algorithm.news_NPTI import classify_npti_fast
+from algorithm.news_NPTI import classify_npti_fast, init_npti
 from bigkinds_crawling.news_raw import news_crawling
 from bigkinds_crawling.news_aggr_grouping import news_aggr
 import multiprocessing
@@ -14,7 +14,7 @@ logger = Logger()
 
 
 # 1. 하나의 통합된 실행 제어 함수
-def run_job_with_timeout(func, args, timeout):
+def run_job_with_timeout(func, args, timeout, on_success=None):
     """
     func: 실행할 함수 (news_crawling 등)
     args: 함수에 전달할 인자 (튜플 형태)
@@ -58,7 +58,24 @@ def run_job_with_timeout(func, args, timeout):
             print(f"✅ [정리완료] {func.__name__} 관련 좀비 프로세스가 모두 제거되었습니다.")
     else:
         print(f"✅ [완료] {func.__name__} 작업이 제시간에 종료되었습니다.")
+        # 정상 종료 시 분류 작업 트리거
+        if on_success:
+            on_success()
 
+# 크롤링 직후 즉시 분류(date job) 트리거
+def trigger_classify_once(scheduler):
+    job_id = "classify_once_pending"
+    if scheduler.get_job(job_id):
+        return
+    scheduler.add_job(
+        classify_npti_fast,
+        trigger="date", #딱 1번 실행
+        run_date=datetime.now() + timedelta(seconds=1),
+        id=job_id,
+        replace_existing=True,  # 혹시 남아있으면 덮어씀
+        misfire_grace_time=60  # 1분 정도 늦어도 실행 허용
+    )
+    logger.info("크롤링 완료 → 즉시 NPTI 분류 1회 예약")
 
 def sch_start():
     job_defaults = {
@@ -67,6 +84,7 @@ def sch_start():
     }
     sch = AsyncIOScheduler(job_defaults=job_defaults)
     now = datetime.now(timezone(timedelta(hours=9)))
+    init_npti()
 
     # 5분(300초) 주기지만, 안전을 위해 280초(4분 40초)에 강제 종료하도록 설정
     # 그래야 5분 정각에 새 스케줄러가 시작될 때 충돌이 없습니다.
@@ -77,7 +95,7 @@ def sch_start():
         'interval',
         minutes=5,
         id='news_crawling',
-        args=[news_crawling, (10,), 280],
+        args=[news_crawling, (10,), 280, lambda: trigger_classify_once(sch)],
         next_run_time=(now + timedelta(seconds=5)).isoformat(timespec="seconds") # 함수명, 인자(튜플), 타임아웃(초)
     )
 
@@ -87,7 +105,7 @@ def sch_start():
         trigger='interval',
         minutes=10,
         id='crawler_naver_fast',
-        args=[run_fast_crawl, (), 540],
+        args=[run_fast_crawl, (), 540, lambda: trigger_classify_once(sch)],
         next_run_time=(now + timedelta(seconds=10)).isoformat(timespec="seconds")
     )
     # 네이버 크롤러(slow) # 스케줄러 시작 기준 7분 후 첫 실행
@@ -96,7 +114,7 @@ def sch_start():
         trigger='interval',
         minutes=30,
         id='crawler_naver_slow',
-        args=[run_slow_crawl, (), 1680],
+        args=[run_slow_crawl, (), 1680, lambda: trigger_classify_once(sch)],
         next_run_time=(now + timedelta(minutes=7)).isoformat(timespec="seconds")
     )
 
@@ -114,7 +132,7 @@ def sch_start():
     sch.add_job(
         run_job_with_timeout,
         trigger="interval",
-        minutes=5,
+        seconds=30,
         id="news_npti_classify",
         args=[classify_npti_fast, (), 300],  # 5분 타임아웃
         next_run_time=(now + timedelta(seconds=50)).isoformat(timespec="seconds")
