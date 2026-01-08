@@ -254,25 +254,36 @@ async def get_result_page():
 
 @app.post("/result")
 async def api_get_result_data(request: Request, db: Session = Depends(get_db)):
-    """결과 페이지에 필요한 모든 DB 데이터 통합 조회"""
     user_id = request.session.get("user_id")
     if not user_id:
-        return JSONResponse(status_code=401, content={"success": False})
+        return JSONResponse(
+            status_code=401, content={"success": False, "isLoggedIn": False}
+        )
 
-    # 유저 점수 조회
+    # 유저 이름 추가 (세션에 저장되어 있다고 가정)
+    # user_info = db.query(UserInfo).filter(UserInfo.user_id == user_id).first()
+    # user_name = user_info.user_name if user_info else "독자"
+    user_name = request.session.get("user_name", "독자")
+
+    # 2. 유저 점수 조회
     user_npti = get_user_npti(db, user_id)
     if not user_npti:
-        return {"hasResult": False}
+        return {
+            "success": True, "isLoggedIn": True, "hasNPTI": False  # 프론트에서 /test로 리다이렉트 시킴
+        }
 
-    # 유형 상세 설명(닉네임 등) 및 차트 라벨 정보 조회
+    # 3. 유형 상세 정보 및 차트 라벨 정보 조회
     code_info = get_npti_code_by_code(db, user_npti['npti_code'])
     all_types = get_all_npti_type(db)
 
     return {
-        "hasResult": True,
+        "success": True,
+        "isLoggedIn": True,
+        "hasNPTI": True,
         "user_npti": user_npti,
         "code_info": code_info,
-        "all_types": all_types
+        "all_types": all_types,
+        "user_name": user_name
     }
 
 @app.get("/search")

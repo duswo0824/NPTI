@@ -48,6 +48,7 @@ async function fetchQuestions() {
 
         // 서버가 401(Unauthorized)을 반환하면 로그인 안 된 상태
         if (response.status === 401) {
+            document.body.style.display = 'none';
             location.href = "/login"; // 로그인 페이지로 리다이렉트
             return null;
         }
@@ -71,13 +72,26 @@ function shuffleArray(array) {
 
 // 4. UI 컴포넌트 초기화 함수
 async function initTestUI() {
+    const form = EL.nptiForm();
+
+    // 1. 데이터 로드 전 즉시 숨김
+    if (form) {
+        form.style.display = "none";
+    }
+
     const data = await fetchQuestions();
     if (!data) return false;
 
-    // DB에서 가져온 질문 리스트 셔플 실행
+    // 질문 렌더링
     const shuffled = shuffleArray([...data]);
     renderQuestionCards(shuffled);
-    return true; // 성공적으로 로드됨
+
+    // 데이터 로드 및 렌더링이 완료된 후 폼을 짜잔! 하고 보여줌
+    if (form) {
+        form.style.display = "block";
+    }
+
+    return true;
 }
 
 function renderQuestionCards(questions) {
