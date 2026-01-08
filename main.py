@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, Query, Request, Body
+from fastapi import FastAPI, Depends, Query, Request, Body, HTTPException
 from fastapi.responses import FileResponse
 from starlette.responses import JSONResponse, RedirectResponse
 from starlette.staticfiles import StaticFiles
@@ -23,6 +23,10 @@ from db_index.db_user_answers import insert_user_answers
 from db_index.db_user_npti import insert_user_npti
 import json
 from elasticsearch_index.es_user_behavior import index_user_behavior
+from db_index.db_user_npti import UserNPTITable, UserNPTIResponse
+from db_index.db_articles_NPTI import ArticlesNPTITable
+from elasticsearch_index.es_raw import ES_INDEX
+
 
 app = FastAPI()
 logger = Logger().get_logger(__name__)
@@ -426,19 +430,30 @@ def page_login():
 
 @app.post("/login")
 def login(req: dict, request: Request, db: Session = Depends(get_db)):
-    success = authenticate_user(
-        db,
-        req.get("user_id"),
-        req.get("user_pw")
-    )
+    user_id = req.get("user_id")
+    user_pw = req.get("user_pw")
 
-    if not success:
-        return {"success": False}
+    # 1. 인증 확인
+    if not authenticate_user(db, user_id, user_pw):
+        return {"success": False, "message": "ID 또는 비밀번호가 틀립니다."}
 
-    # 세션 저장
-    request.session["user_id"] = req.get("user_id")
+    # 2. DB에서 데이터 가져오기
+    raw_data = get_user_npti(db, user_id)
 
-    # JSON만 반환 (페이지 이동 X)
+    # 3. 세션 저장
+    request.session["user_id"] = user_id
+
+
+    if raw_data: # 유저 NPTI가 있을 경우
+        # 💡 핵심: 복잡한 객체 전체를 넣지 말고,
+        # 필요한 'npti_code'(문자열)만 딱 골라서 넣습니다.
+        # 이렇게 하면 RowMapping이나 날짜 에러가 전혀 발생하지 않습니다.
+        request.session["npti_result"] = raw_data["npti_code"]
+        request.session["hasNPTI"] = True
+    else:# 유저 NPTI가 없을 경우
+        request.session["npti_result"] = None
+        request.session["hasNPTI"] = False
+
     return {"success": True}
 
 #로그인 상태를 확인
@@ -525,45 +540,112 @@ def get_about(db: Session = Depends(get_db)):
         "guides": guides
     }
 
-# 마이페이지 프로필 조회 - (추가)
-@app.get("/users/me/profile")
-def read_my_profile(request: Request, db: Session = Depends(get_db)):
-    user_id = request.session.get("user_id")
-    if not user_id:
-        return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+@app.get("/mypage")
+async def get_mypage_page():
+    return FileResponse("view/html/mypage.html")
 
-    profile_data = get_my_page_data(db, user_id)
+@app.post("/mypage")
+async def mypage(req: Request, db: Session = Depends(get_db)):
+    pass # 실직적으로 처리하는 곳
 
-    if not profile_data:
-        request.session.clear()
-        return JSONResponse(status_code=404, content={"detail": "User not found"})
 
-    return profile_data
-
-# NPTI 결과 조회
-@app.get("/users/me/npti")
-def read_my_npti(
-    request: Request,
-    db: Session = Depends(get_db)
-):
-    user_id = request.session.get("user_id")
-
-    # 로그인 안 됨 → 사실만 반환
-    if not user_id:
-        return {
-            "hasResult": False,
-            "reason": "not_logged_in"
-        }
-
-    result = get_user_npti(db, user_id)
+@app.get("/user/npti/{user_id}")
+async def get_user_npti(user_id: str, db: Session = Depends(get_db)):
+    # 1. user_npti와 npti_code 테이블 조인 (기본 정보 및 별칭 조회)
+    result = db.query(
+        UserNPTITable,
+        npti_code_response.type_nick
+    ).join(
+        npti_code_response, UserNPTITable.npti_code == npti_code_response.npti_code
+    ).filter(
+        UserNPTITable.user_id == user_id
+    ).first()
 
     if not result:
-        return {
-            "hasResult": False,
-            "reason": "no_result"
-        }
+        raise HTTPException(status_code=404, detail="NPTI data not found")
+    user_data, type_nick = result
+    npti_code_str = user_data.npti_code  # 예: 'STFN'
+
+    # 2. 각 알파벳에 매칭되는 npti_kor 값 가져오기 (npti_type 테이블 조회)
+    # npti_type 테이블에서 NPTI_type 컬럼이 코드에 포함된 것들만 조회
+    chars = list(npti_code_str)
+    type_items = db.query(npti_type_response).filter(npti_type_response.NPTI_type.in_(chars)).all()
+
+    # 순서(S-T-F-N)에 맞게 딕셔너리로 맵핑 생성
+    kor_map = {item.NPTI_type: item.npti_kor for item in type_items}
+
+    # 최종 리스트 생성 (예: ["짧은", "이야기형", "객관적", "비판적"])
+    npti_kor_list = [kor_map.get(c, "") for c in chars]
 
     return {
-        "hasResult": True,
-        "data": result
+        "user_id": user_data.user_id,
+        "npti_code": npti_code_str,
+        "type_nick": type_nick,
+        "npti_kor_list": npti_kor_list,  # 프론트에서 사용할 한글 명칭 리스트
+        "updated_at": user_data.updated_at
     }
+
+
+@app.get("/curated/news")
+async def get_curated_news(
+        npti: str = Query(...),
+        category: str = "all",
+        sort_type: str = "accuracy",
+        db: Session = Depends(get_db)
+):
+    # DB에서 해당 NPTI_code를 가진 news_id 리스트를 먼저 가져옴
+    news_ids = db.query(ArticlesNPTITable.news_id).filter(
+        ArticlesNPTITable.NPTI_code == npti
+    ).all()
+
+    id_list = [id[0] for id in news_ids]
+    if not id_list:
+        return {"articles": []}
+
+    # ES 쿼리 작성
+    body = {
+        "query": {
+            "bool": {
+                "must": [{"terms": {"news_id": id_list}}]
+            }
+        }
+    }
+
+    # 3. [핵심] 정렬 조건 처리
+    if sort_type == "latest":  # == 양옆에 공백 추가
+        # 최신순 정렬 로직
+        body["sort"] = [
+            {"pubdate": {"order": "desc"}},
+            {"pubtime": {"order": "desc"}}
+        ]
+    else:
+        # 정확도순 (디폴트)
+        body["sort"] = [{"_score": "desc"}]
+
+    if category != "all":
+        body["query"]["bool"]["filter"] = [{"term": {"category": category}}]
+
+    try:
+        # 들여쓰기를 정확히 4칸으로 통일
+        res = es.search(index=ES_INDEX, body=body)
+        hits = res["hits"]["hits"]
+
+        # 3. 기존 search_article의 데이터 가공 방식을 그대로 활용
+        articles = []
+        for hit in hits:
+            src = hit["_source"]
+            news_info = {
+                "id": src.get("news_id", ""),
+                "title": src.get("title", ""),
+                "summary": src.get("content", "")[:150] + "...",  # UI에 맞게 요약
+                "publisher": src.get("media", ""),
+                "date": src.get("pubdate", ""),
+                "thumbnail": src.get("img", ""),
+                "category": src.get("category", "")
+            }
+            articles.append(news_info)
+
+        return {"articles": articles}
+    except Exception as e:
+        logger.error(f"큐레이션 뉴스 검색 오류: {e}")
+        return {"articles": []}
