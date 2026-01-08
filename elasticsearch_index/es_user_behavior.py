@@ -1,12 +1,12 @@
 from logger import Logger
-from elasticsearch import Elasticsearch
+from elasticsearch import Elasticsearch,helpers
 
 logger = Logger().get_logger(__name__)
 
 ES_HOST = "http://localhost:9200"
 ES_USER = "elastic"
 ES_PASS = "elastic"
-ES_INDEX = "news_raw"
+ES_INDEX = "user_behavior"
 
 es = Elasticsearch( # elasticsearch 연결 객체 생성
     ES_HOST,
@@ -26,9 +26,8 @@ def ensure_index():
                 "MSF_Y_inf": {"type": "float"},
                 "mouseX": {"type": "float"},
                 "mouseY": {"type": "float"},
-                "n_word": {"type": "integer"},
                 "timestamp": {"type": "integer"},
-                "click": {"type": "integer"},
+                "baseline" :{"type": "float"},
             }
         }
     }
@@ -47,14 +46,75 @@ def ensure_index():
     except Exception as e:
         logger.error(f"index 생성 오류 : {e}")
 
-def index_behavior_row(row:dict): # raw_news 데이터를 indexing하는 함수
-    es.index(index=ES_INDEX, id=row["news_id"], document=row, refresh="wait_for")
+def index_user_behavior(behavior_list:list): # raw_news 데이터를 indexing하는 함수
+    if not behavior_list:
+        return 0
 
-def search_behavior(id_:str):
+    # Bulk Insert를 위한 데이터 구조 생성
+    # _id를 지정하지 않으면 ES가 자동으로 UUID를 생성합니다. (로그 데이터는 자동 생성 권장)
+    actions = [
+        {
+            "_index": ES_INDEX,
+            "_source": doc
+        }
+        for doc in behavior_list
+    ]
+
     try:
-        result = es.exists(index=ES_INDEX, id=id_)  # ✅ exists() 사용 (더 빠름)
-        logger.info(f"ES 중복 확인 - {id_} : {'기존' if result else '신규'}")
-        return result
+        success_count, errors = helpers.bulk(es, actions)
+        if errors:
+            logger.error(f"ES Bulk Insert 일부 에러 발생: {errors}")
+        logger.info(f"ES 데이터 적재 성공: {success_count}건")
+        return success_count
     except Exception as e:
-        logger.error(f"ES 중복 확인 실패 {id_}: {e}")
-        return False
+        logger.error(f"ES Indexing 실패: {e}")
+        return 0
+
+def search_user_behavior(user_id: str):
+    body = {
+        "query": {
+            "bool": {
+                "filter": [
+                    # 1. user_id 일치 (keyword 타입이므로 term 사용)
+                    {"term": {"user_id": user_id}},
+
+                    # 2. timestamp가 start_timestamp 이상 (gte)
+                    # {"range": {"timestamp": {"gte": start_timestamp}}}
+                ]
+            }
+        },
+        # 3. 시간 순서대로 정렬 (오름차순)
+        "sort": [
+            {"timestamp": {"order": "asc"}}
+        ],
+        "size": 10000
+    }
+    try:
+        response = es.search(index="user_behavior", body=body)
+
+        # 검색된 문서들의 _source만 리스트로 반환
+        hits = response['hits']['hits']
+        logs = [hit['_source'] for hit in hits]
+
+        print(f"[검색 완료] User: {user_id} |  Count: {len(logs)}")
+        return logs
+
+    except Exception as e:
+        print(f"[검색 실패] {e}")
+        return []
+
+if __name__ == "__main__": # 이 파일에서 직접 실행할 때만 아래 내용이 실행되도록 하는 조건문
+    if es.ping(): # elasticsearch에 요청을 보냈을 때 응답이 오는지 확인하는 함수(es 연결 확인 -> True/False)
+        logger.info(f"ES 연결 성공")
+    else:
+        logger.info(f"ES 연결 실패")
+    ensure_index()
+    try:
+        # es.indices.delete(index=ES_INDEX)
+        # logger.info(f'{ES_INDEX} 삭제 완료')
+        cnt = es.count(index=ES_INDEX)["count"] # raw_news 데이터 수를 cnt 변수에 저장
+        logger.info(f"문서 수 : {cnt}")
+        logs = search_user_behavior(user_id="admin")
+        print(logs)
+    except Exception as e:
+        logger.info(f"문서 수 조회 오류 : {e}") # error 시 error log 출력

@@ -22,6 +22,7 @@ from datetime import timedelta
 from db_index.db_user_answers import insert_user_answers
 from db_index.db_user_npti import upsert_user_npti
 import json
+from elasticsearch_index.es_user_behavior import index_user_behavior
 
 app = FastAPI()
 logger = Logger().get_logger(__name__)
@@ -98,9 +99,6 @@ async def get_article(news_id:str):
 # JS의 sendBeacon('/log/behavior') 경로와 일치시킴
 @app.post("/log/behavior")
 async def collect_behavior_log(request: Request):
-    """
-    Pydantic 모델 없이 Request 객체에서 직접 JSON 데이터를 추출합니다.
-    """
     try:
         # 1. Body 데이터를 Dictionary로 변환 (await 필수)
         data = await request.json()
@@ -110,15 +108,29 @@ async def collect_behavior_log(request: Request):
         news_id = data.get("news_id")
         user_id = data.get("user_id")
         log_count = data.get("total_logs")
+        raw_logs = data.get("logs", [])
 
-        print(f"[수신 성공] News: {news_id} | User: {user_id} | Logs: {log_count}개")
+        processed_docs = []
+        for log in raw_logs:
+            # JS 변수명 -> ES 매핑 변수명 변환
+            doc = {
+                "user_id": user_id,
+                "news_id": news_id,
+                "MMF_X_inf": log.get("MMF_X", 0.0),  # JS: MMF_X -> ES: MMF_X_inf
+                "MMF_Y_inf": log.get("MMF_Y", 0.0),  # JS: MMF_Y -> ES: MMF_Y_inf
+                "MSF_Y_inf": log.get("MSF_Y", 0.0),  # JS: MSF_Y -> ES: MSF_Y_inf
+                "mouseX": log.get("mouseX", 0.0),
+                "mouseY": log.get("mouseY", 0.0),
+                "timestamp": int(log.get("elapsedMs", 0)),
+                "baseline": log.get("baseline", 0.0)
+            }
+            processed_docs.append(doc)
 
-        # 3. (선택사항) 파일로 저장 예시 (DB 연동 전 테스트용)
-        # 데이터를 한 줄에 하나씩 JSON으로 저장 (JSON Lines 포맷)
-        # with open("user_behavior_logs.jsonl", "a", encoding="utf-8") as f:
-        #     f.write(json.dumps(data, ensure_ascii=False) + "\n")
+        # 4. [저장] ES 인덱싱 함수 호출
+        count = index_user_behavior(processed_docs)
 
-        return {"status": "ok", "message": "Data received successfully"}
+        print(f"[수신 성공] User: {user_id} | News: {news_id} | Logs: {log_count}개 | ES 저장: {count}건")
+        return {"status": "ok", "message": f"Saved {count} logs"}
 
     except Exception as e:
         print(f"[에러 발생] {e}")
@@ -186,19 +198,6 @@ def read_news_raw(q: Optional[str] = None):
         return news_list
     except Exception as e:
         return {"status": "error", "message": str(e)}
-
-es = Elasticsearch(
-    "http://localhost:9200",
-    basic_auth=("elastic", "elastic"),
-    verify_certs=False
-)
-
-FIELD_MAP = {
-    "title": "title_tokens",
-    "content": "content_tokens",
-    "media": "media",
-    "category": "category"
-}
 
 
 @app.get("/test")
@@ -279,6 +278,20 @@ async def api_get_result_data(request: Request, db: Session = Depends(get_db)):
 @app.get("/search")
 def main():
     return FileResponse("view/html/search.html")
+
+
+es = Elasticsearch(
+    "http://localhost:9200",
+    basic_auth=("elastic", "elastic"),
+    verify_certs=False
+)
+
+FIELD_MAP = {
+    "title": "title_tokens",
+    "content": "content_tokens",
+    "media": "media",
+    "category": "category"
+}
 
 @app.post("/search")
 def search_news(payload: dict = Body(...)):
