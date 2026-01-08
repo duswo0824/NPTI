@@ -10,7 +10,7 @@ import psutil
 from logger import Logger
 from datetime import datetime, timezone, timedelta
 
-logger = Logger()
+logger = Logger().get_logger(__name__)
 
 
 # 1. 하나의 통합된 실행 제어 함수
