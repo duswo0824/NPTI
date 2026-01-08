@@ -236,7 +236,7 @@ async def save_test_result(request: Request, payload: dict = Body(...), db: Sess
             "npti_code": payload.get("npti_result"),
             "length_score": scores.get('length'),
             "article_score": scores.get('article'),
-            "info_score": scores.get('info'),
+            "information_score": scores.get('info') or scores.get('information') or 0,
             "view_score": scores.get('view')
         }
         insert_user_npti(db, npti_params)
@@ -424,21 +424,33 @@ def check_user_id(user_id: str, db: Session = Depends(get_db)):
 def page_login():
     return FileResponse("view/html/login.html")
 
+
 @app.post("/login")
 def login(req: dict, request: Request, db: Session = Depends(get_db)):
-    success = authenticate_user(
-        db,
-        req.get("user_id"),
-        req.get("user_pw")
-    )
+    user_id = req.get("user_id")
+    user_pw = req.get("user_pw")
 
-    if not success:
-        return {"success": False}
+    # 1. 인증 확인
+    if not authenticate_user(db, user_id, user_pw):
+        return {"success": False, "message": "ID 또는 비밀번호가 틀립니다."}
 
-    # 세션 저장
-    request.session["user_id"] = req.get("user_id")
+    # 2. DB에서 데이터 가져오기
+    raw_data = get_user_npti(db, user_id)
 
-    # JSON만 반환 (페이지 이동 X)
+    # 3. 세션 저장
+    request.session["user_id"] = user_id
+
+
+    if raw_data: # 유저 NPTI가 있을 경우
+        # 💡 핵심: 복잡한 객체 전체를 넣지 말고,
+        # 필요한 'npti_code'(문자열)만 딱 골라서 넣습니다.
+        # 이렇게 하면 RowMapping이나 날짜 에러가 전혀 발생하지 않습니다.
+        request.session["npti_result"] = raw_data["npti_code"]
+        request.session["hasNPTI"] = True
+    else:# 유저 NPTI가 없을 경우
+        request.session["npti_result"] = None
+        request.session["hasNPTI"] = False
+
     return {"success": True}
 
 #로그인 상태를 확인
@@ -525,45 +537,10 @@ def get_about(db: Session = Depends(get_db)):
         "guides": guides
     }
 
-# 마이페이지 프로필 조회 - (추가)
-@app.get("/users/me/profile")
-def read_my_profile(request: Request, db: Session = Depends(get_db)):
-    user_id = request.session.get("user_id")
-    if not user_id:
-        return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+@app.get("/mypage")
+async def get_mypage_page():
+    return FileResponse("view/html/mypage.html")
 
-    profile_data = get_my_page_data(db, user_id)
-
-    if not profile_data:
-        request.session.clear()
-        return JSONResponse(status_code=404, content={"detail": "User not found"})
-
-    return profile_data
-
-# NPTI 결과 조회
-@app.get("/users/me/npti")
-def read_my_npti(
-    request: Request,
-    db: Session = Depends(get_db)
-):
-    user_id = request.session.get("user_id")
-
-    # 로그인 안 됨 → 사실만 반환
-    if not user_id:
-        return {
-            "hasResult": False,
-            "reason": "not_logged_in"
-        }
-
-    result = get_user_npti(db, user_id)
-
-    if not result:
-        return {
-            "hasResult": False,
-            "reason": "no_result"
-        }
-
-    return {
-        "hasResult": True,
-        "data": result
-    }
+@app.post("/mypage")
+async def mypage(req: Request, db: Session = Depends(get_db)):
+    pass # 실직적으로 처리하는 곳
