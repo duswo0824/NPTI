@@ -84,3 +84,56 @@ def authenticate_user(db: Session, user_id: str, user_pw: str) -> bool:
 
     logger.info(f"[LOGIN SUCCESS] user_id={user_id}")
     return True
+
+
+# =========================
+# User Info Fetch Logic (Basic)
+# =========================
+def get_user_by_id(db: Session, user_id: str):
+    """
+    [내부용] ID로 DB의 원본 데이터를 조회합니다.
+    """
+    logger.info(f"[PROFILE] fetch raw data for user_id={user_id}")
+
+    sql = text("""
+        SELECT user_id, user_name, user_email, user_birth, user_age, user_gender
+        FROM user_info
+        WHERE user_id = :user_id
+    """)
+
+    result = db.execute(sql, {"user_id": user_id}).fetchone()
+    return result
+
+
+# =========================================================
+# [NEW] Service Logic for MyPage (Controller Support)
+# =========================================================
+def get_my_page_data(db: Session, user_id: str):
+    """
+    [Main.py용] DB 데이터를 조회한 뒤, 프론트엔드가 바로 쓸 수 있게
+    성별(Boolean -> String) 및 날짜(Date -> String) 변환을 수행하여 반환합니다.
+    """
+
+    # 1. 위의 기본 조회 함수 재사용
+    user = get_user_by_id(db, user_id)
+
+    # 2. 데이터가 없으면 None 반환
+    if not user:
+        return None
+
+    # 3. 데이터 가공 (Logic 처리)
+    # DB에는 True(1) 또는 False(0)로 저장되어 있으므로 문자열로 변환
+    gender_str = "여자" if user.user_gender else "남자"
+
+    # 날짜 객체(date)를 문자열(YYYY-MM-DD)로 변환
+    birth_str = str(user.user_birth)
+
+    # 4. JSON으로 내보내기 좋은 딕셔너리(dict) 형태로 포장
+    return {
+        "userId": user.user_id,
+        "name": user.user_name,
+        "email": user.user_email,
+        "birth": birth_str,
+        "age": user.user_age,
+        "gender": gender_str
+    }
