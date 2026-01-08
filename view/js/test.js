@@ -16,15 +16,20 @@ const API = {
 
 // 2. 메인 실행 DOMContentLoaded
 document.addEventListener('DOMContentLoaded', async () => {
-    // UI 초기화: 질문 로드 및 렌더링
-    await initTestUI(); 
+
+    // UI 초기화(질문 로드)를 먼저 시도하고, 그 결과로 로그인 여부를 판단
+    const isLoaded = await initTestUI();
+
+    // 질문 로드에 실패했다면 (서버에서 401을 줬다면) 함수를 종료
+    // (리다이렉트는 fetchQuestions 함수 내부에서 처리함)
+    if (!isLoaded) return;
 
     // 이벤트 리스너 등록
     EL.nptiForm()?.addEventListener('submit', handleTestSubmit); 
 
-    // [확인] 버튼 클릭 시 이동 로직 버튼 클릭 시 이동 로직
+    // [확인] 버튼 클릭 시 이동 로직
     EL.btnGoResult()?.addEventListener('click', () => {
-        location.href = "/view/html/result.html"; // 경로 수정 필요
+        location.href = "/result";
     });
 
     // 에러 모달 닫기 버튼
@@ -40,10 +45,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 async function fetchQuestions() {
     try {
         const response = await fetch(API.GET_QUESTIONS);
+
+        // 서버가 401(Unauthorized)을 반환하면 로그인 안 된 상태
+        if (response.status === 401) {
+            location.href = "/login"; // 로그인 페이지로 리다이렉트
+            return null;
+        }
+
+        if (!response.ok) throw new Error('질문 로드 실패');
         return await response.json();
     } catch (err) {
         console.error('질문 데이터 로드 실패:', err);
-        return [];
+        return null;
     }
 }
 
@@ -59,11 +72,12 @@ function shuffleArray(array) {
 // 4. UI 컴포넌트 초기화 함수
 async function initTestUI() {
     const data = await fetchQuestions();
-    if (!data || data.length === 0) return;
+    if (!data) return false;
 
     // DB에서 가져온 질문 리스트 셔플 실행
     const shuffled = shuffleArray([...data]);
     renderQuestionCards(shuffled);
+    return true; // 성공적으로 로드됨
 }
 
 function renderQuestionCards(questions) {
@@ -147,7 +161,7 @@ async function handleTestSubmit(e) {
     } else {
         console.error("저장 실패:", result.message);
         showErrorModal(result.message || `결과 저장 중 오류가 발생했습니다.
-다시 시도해주세요`);
+        다시 시도해주세요`);
         if (submitBtn) submitBtn.disabled = false;
     }
 }

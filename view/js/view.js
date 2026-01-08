@@ -36,6 +36,7 @@ function loadArticleData(news_id){
             // [수정됨] 기사 로딩이 끝나면 행동 수집 시작!
             if (!tracker) {
                 tracker = userBehavior(100); // 0.1초 간격 수집
+                setInterval(sendDataToServer,10000); // 10초 간격 데이터 전송
             }
 
             if (data.related_news && data.related_news.length > 0){
@@ -99,14 +100,15 @@ function initRelatedNews(related_news) {
 function sendDataToServer() {
     // 1. 보낼 데이터가 없으면 중단
     if (!behaviorLogs || behaviorLogs.length === 0) return;
-
+    const logsToSend = [...behaviorLogs];
+    behaviorLogs = [];
     // 2. 최종 데이터 패키징
     const payload = {
         news_id: currentNewsId,
         user_id: "guest", // 로그인 기능 구현 시 실제 ID로 교체
         session_end_time: Date.now(),
-        total_logs: behaviorLogs.length,
-        logs: behaviorLogs // 쌓아둔 데이터 전체
+        total_logs: logsToSend.length,
+        logs: logsToSend // 복사한 데이터(10초)
     };
 
     // 3. 데이터 전송 (sendBeacon 사용 권장)
@@ -115,17 +117,17 @@ function sendDataToServer() {
     const success = navigator.sendBeacon('/log/behavior', blob);
 
     // 4. 전송 후 로그 초기화 (중복 전송 방지)
-    if (success) {
-        behaviorLogs = [];
-    } else {
-        // sendBeacon 실패 시 fetch로 시도 (keepalive 옵션 필수)
+    if (!success) {
+        // 실패 시 fetch로 재시도
         fetch('/log/behavior', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(payload),
             keepalive: true
+        }).catch(err => {
+            console.error("Data send failed", err);
+            behaviorLogs.unshift(...logsToSend);
         });
-        behaviorLogs = [];
     }
 }
 
