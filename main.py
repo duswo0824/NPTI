@@ -258,36 +258,25 @@ async def get_result_page():
 
 @app.post("/result")
 async def api_get_result_data(request: Request, db: Session = Depends(get_db)):
+    """결과 페이지에 필요한 모든 DB 데이터 통합 조회"""
     user_id = request.session.get("user_id")
     if not user_id:
-        return JSONResponse(
-            status_code=401, content={"success": False, "isLoggedIn": False}
-        )
+        return JSONResponse(status_code=401, content={"success": False})
 
-    # 유저 이름 추가 (세션에 저장되어 있다고 가정)
-    # user_info = db.query(UserInfo).filter(UserInfo.user_id == user_id).first()
-    # user_name = user_info.user_name if user_info else "독자"
-    user_name = request.session.get("user_name", "독자")
-
-    # 2. 유저 점수 조회
+    # 유저 점수 조회
     user_npti = get_user_npti(db, user_id)
     if not user_npti:
-        return {
-            "success": True, "isLoggedIn": True, "hasNPTI": False  # 프론트에서 /test로 리다이렉트 시킴
-        }
+        return {"hasResult": False}
 
-    # 3. 유형 상세 정보 및 차트 라벨 정보 조회
+    # 유형 상세 설명(닉네임 등) 및 차트 라벨 정보 조회
     code_info = get_npti_code_by_code(db, user_npti['npti_code'])
     all_types = get_all_npti_type(db)
 
     return {
-        "success": True,
-        "isLoggedIn": True,
-        "hasNPTI": True,
+        "hasResult": True,
         "user_npti": user_npti,
         "code_info": code_info,
-        "all_types": all_types,
-        "user_name": user_name
+        "all_types": all_types
     }
 
 @app.get("/search")
@@ -441,19 +430,30 @@ def page_login():
 
 @app.post("/login")
 def login(req: dict, request: Request, db: Session = Depends(get_db)):
-    success = authenticate_user(
-        db,
-        req.get("user_id"),
-        req.get("user_pw")
-    )
+    user_id = req.get("user_id")
+    user_pw = req.get("user_pw")
 
-    if not success:
-        return {"success": False}
+    # 1. 인증 확인
+    if not authenticate_user(db, user_id, user_pw):
+        return {"success": False, "message": "ID 또는 비밀번호가 틀립니다."}
 
-    # 세션 저장
-    request.session["user_id"] = req.get("user_id")
+    # 2. DB에서 데이터 가져오기
+    raw_data = get_user_npti(db, user_id)
 
-    # JSON만 반환 (페이지 이동 X)
+    # 3. 세션 저장
+    request.session["user_id"] = user_id
+
+
+    if raw_data: # 유저 NPTI가 있을 경우
+        # 💡 핵심: 복잡한 객체 전체를 넣지 말고,
+        # 필요한 'npti_code'(문자열)만 딱 골라서 넣습니다.
+        # 이렇게 하면 RowMapping이나 날짜 에러가 전혀 발생하지 않습니다.
+        request.session["npti_result"] = raw_data["npti_code"]
+        request.session["hasNPTI"] = True
+    else:# 유저 NPTI가 없을 경우
+        request.session["npti_result"] = None
+        request.session["hasNPTI"] = False
+
     return {"success": True}
 
 #로그인 상태를 확인
@@ -540,48 +540,13 @@ def get_about(db: Session = Depends(get_db)):
         "guides": guides
     }
 
-# 마이페이지 프로필 조회 - (추가)
-@app.get("/users/me/profile")
-def read_my_profile(request: Request, db: Session = Depends(get_db)):
-    user_id = request.session.get("user_id")
-    if not user_id:
-        return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+@app.get("/mypage")
+async def get_mypage_page():
+    return FileResponse("view/html/mypage.html")
 
-    profile_data = get_my_page_data(db, user_id)
-
-    if not profile_data:
-        request.session.clear()
-        return JSONResponse(status_code=404, content={"detail": "User not found"})
-
-    return profile_data
-
-# NPTI 결과 조회
-@app.get("/users/me/npti")
-def read_my_npti(
-    request: Request,
-    db: Session = Depends(get_db)
-):
-    user_id = request.session.get("user_id")
-
-    # 로그인 안 됨 → 사실만 반환
-    if not user_id:
-        return {
-            "hasResult": False,
-            "reason": "not_logged_in"
-        }
-
-    result = get_user_npti(db, user_id)
-
-    if not result:
-        return {
-            "hasResult": False,
-            "reason": "no_result"
-        }
-
-    return {
-        "hasResult": True,
-        "data": result
-    }
+@app.post("/mypage")
+async def mypage(req: Request, db: Session = Depends(get_db)):
+    pass # 실직적으로 처리하는 곳
 
 
 @app.get("/user/npti/{user_id}")
@@ -598,7 +563,6 @@ async def get_user_npti(user_id: str, db: Session = Depends(get_db)):
 
     if not result:
         raise HTTPException(status_code=404, detail="NPTI data not found")
-
     user_data, type_nick = result
     npti_code_str = user_data.npti_code  # 예: 'STFN'
 
