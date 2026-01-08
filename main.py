@@ -166,7 +166,10 @@ async def get_test_page():
 
 
 @app.get("/npti/q")
-async def get_questions(db: Session = Depends(get_db)):
+async def get_questions(request: Request, db: Session = Depends(get_db)):
+    if not request.session.get("user_id"):
+        return JSONResponse(status_code=401, content={"message": "로그인 필요"})
+
     query = text("SELECT question_id, question_text, npti_axis, question_ratio FROM db_npti_question")
     result = db.execute(query).fetchall()
     return [dict(row) for row in result]
@@ -175,16 +178,18 @@ async def get_questions(db: Session = Depends(get_db)):
 @app.post("/test")
 async def save_test_result(request: Request, payload: dict = Body(...), db: Session = Depends(get_db)):
     user_id = request.session.get("user_id")
+    if not user_id:
+        return JSONResponse(status_code=401, content={"success": False, "message": "로그인이 필요합니다."})
 
     try:
-        # 1. 답변 데이터 가공 (insert_user_answers 형식에 맞춤)
+        # 개별 답변 데이터 가공 및 저장 (insert_user_answers 호출)
         answers_list = [
-            {"question_no": int(q_id.replace('q', '')), "answer_value": val}
+            {"question_no": int(str(q_id).replace('q', '')), "answer_value": val}
             for q_id, val in payload.get("answers", {}).items()
         ]
         insert_user_answers(db, user_id, answers_list)
 
-        # 2. NPTI 결과 데이터 가공 (upsert_user_npti 형식에 맞춤)
+        # NPTI 결과 데이터 가공 (upsert_user_npti 호출)
         scores = payload.get("scores", {})
         npti_params = {
             "user_id": user_id,
