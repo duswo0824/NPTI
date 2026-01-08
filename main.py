@@ -24,8 +24,8 @@ from db_index.db_user_npti import insert_user_npti
 import json
 from elasticsearch_index.es_user_behavior import index_user_behavior
 from db_index.db_user_npti import UserNPTITable, UserNPTIResponse
-from db_index.db_articles_NPTI import ArticlesNPTITable
 from elasticsearch_index.es_raw import ES_INDEX
+from db_index.db_articles_NPTI import ArticlesNPTI
 
 
 app = FastAPI()
@@ -594,8 +594,8 @@ async def get_curated_news(
         db: Session = Depends(get_db)
 ):
     # DB에서 해당 NPTI_code를 가진 news_id 리스트를 먼저 가져옴
-    news_ids = db.query(ArticlesNPTITable.news_id).filter(
-        ArticlesNPTITable.NPTI_code == npti
+    news_ids = db.query(ArticlesNPTI.news_id).filter(
+        ArticlesNPTI.NPTI_code == npti
     ).all()
 
     id_list = [id[0] for id in news_ids]

@@ -64,28 +64,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     function renderCurationHeader(data) {
         if (!resultHeader || !data) return;
 
-        const nptiCode = data.npti_code; // 'STFN'
-        const nickname = data.type_nick; // '팩트 현실주의자'
-        const korList = data.npti_kor_list; // ['짧은', '이야기형', '객관적', '비판적']
+        const { npti_code, type_nick, npti_kor_list } = data;
 
         resultHeader.innerHTML = `
-            <div class="npti-header">
-                <span class="npti-code" style="color:#FF6B00; font-weight:bold; font-size:24px;">${nptiCode}</span> 
-                <span class="npti-nickname" style="margin-left:10px; font-weight:bold;">${nickname}</span>
-            </div>
-            <div class="tags" style="background-color: #FFF5EE; padding: 10px; margin-top: 10px; border-radius: 5px;">
-                <div class="tag-text">
-                    ${nptiCode.split('').map((char, index) => `
-                        <span style="margin-right:15px;">
-                            <b class="point" style="color:#FF6B00;">${char}</b> - ${korList[index]}
-                        </span>
-                    `).join('')}
+        <div class="npti-header" style="margin-bottom:15px;">
+            <span class="npti-code">${npti_code}</span> 
+            <span class="npti-nickname">${type_nick}</span>
+        </div>
+        <div class="tags">
+            ${npti_code.split('').map((char, i) => `
+                <div class="tag-item">
+                    <span class="point">${char}</span> - ${npti_kor_list[i]}
                 </div>
-            </div>
-        `;
-        
+            `).join('')}
+        </div>
+    `;
+        // 하단 제목 업데이트
         const curationTitle = document.getElementById('curation-result-title');
-        if (curationTitle) curationTitle.innerText = `[${nptiCode}] 성향 뉴스 큐레이션`;
+        if (curationTitle) curationTitle.innerText = `[${npti_code}] 성향 뉴스 큐레이션`;
     }
 
     // 4. 맞춤 뉴스 리스트 렌더링

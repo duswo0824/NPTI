@@ -5,11 +5,11 @@ import joblib
 from datetime import datetime, timezone, timedelta
 from logger import Logger
 from elasticsearch import Elasticsearch, helpers
-from sqlalchemy import Column, String, DateTime
-from sqlalchemy.sql import func
+
 from database import Base, get_engine, SessionLocal
 import warnings
 from sqlalchemy.exc import IntegrityError
+from db_index.db_articles_NPTI import ArticlesNPTI
 
 logger = Logger().get_logger(__name__)
 
@@ -25,19 +25,6 @@ es = Elasticsearch( # elasticsearch 연결 객체 생성
     verify_certs=False,
     ssl_show_warn=False # type: ignore
 )
-
-# articles_NPTI 테이블 정의
-class ArticlesNPTI(Base):
-    __tablename__ = 'articles_NPTI'
-
-    news_id = Column(String(100), primary_key=True)
-    NPTI_code = Column(String(50)) #,ForeignKey('npti_code.NPTI_code'))
-    length_type = Column(String(10))  # L/S
-    article_type = Column(String(10))  # T/C
-    info_type = Column(String(10))  # F/I
-    view_type = Column(String(10))  # P/N
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
-
 
 warnings.filterwarnings(
     "ignore",
@@ -99,21 +86,16 @@ def init_npti():
 def classify_npti_fast():
     db = SessionLocal()
 
-    models = load_joblib()
-    model_ct, tfidf_ct = models["ct"]
-    model_fi, tfidf_fi = models["fi"]
-    model_pn, tfidf_pn = models["pn"]
-
-    news_id = None
     try:
+        models = load_joblib()
+        model_ct, tfidf_ct = models["ct"]
+        model_fi, tfidf_fi = models["fi"]
+        model_pn, tfidf_pn = models["pn"]
+
         now = datetime.now(timezone(timedelta(hours=9)))
 
         query = {
-            "query": {
-                "term": {
-                    "classified": False
-                }
-            },
+            "query": {"term": {"classified": False}},
             "_source": ["content"]
         }
 
@@ -122,17 +104,13 @@ def classify_npti_fast():
 
         for row in rows:
             news_id = row["_id"]
-            content = row["_source"]["content"]
+            content = row["_source"].get("content")
+
             if not content:
                 es.update(
                     index=ES_INDEX,
                     id=news_id,
-                    body={
-                        "doc": {
-                            "classified": True,
-                            "classified_reason": "empty_content"
-                        }
-                    }
+                    body={"doc": {"classified": True, "classified_reason": "empty_content"}}
                 )
                 continue
 
@@ -180,7 +158,7 @@ def classify_npti_fast():
 
             except IntegrityError as e:
                 db.rollback()
-                logger.warning(f"[중복 기사] DB IntegrityError news_id={news_id}")
+                logger.warning(f"[중복 기사] news_id={news_id}")
                 es.update(
                     index=ES_INDEX,
                     id=news_id,
@@ -209,8 +187,8 @@ def classify_npti_fast():
 
     except Exception as e:
         logger.error(f"[news_NPTI.py] 기사 NPTI 전체 프로세스(joblib) 에러: {e}")
-        err_article(news_id, e)
-        logger.info(f"[news_NPTI.py] 기사 NPTI 전체 프로세스(joblib) 에러 로그 저장 완료")
+        err_article(news_id if 'news_id' in locals() else "BATCH", e)
+        logger.info(f"[news_NPTI.py] 에러 로그 저장 완료")
         db.rollback()
     finally:
         db.close()
