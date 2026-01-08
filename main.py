@@ -13,12 +13,15 @@ from database import get_db
 from db_index.db_npti_type import get_all_npti_type, get_npti_type_by_group, npti_type_response
 from db_index.db_npti_code import get_all_npti_codes, get_npti_code_by_code, npti_code_response
 from db_index.db_npti_question import get_all_npti_questions, get_npti_questions_by_axis, npti_question_response
-from db_index.db_user_info import UserCreateRequest, insert_user, authenticate_user
+from db_index.db_user_info import UserCreateRequest, insert_user, authenticate_user, get_my_page_data
 from db_index.db_user_npti import get_user_npti
 from sqlalchemy import text
 from starlette.middleware.sessions import SessionMiddleware
 from elasticsearch import Elasticsearch, ConnectionError as ESConnectionError
 from datetime import timedelta
+from db_index.db_user_answers import insert_user_answers
+from db_index.db_user_npti import upsert_user_npti
+import json
 
 app = FastAPI()
 logger = Logger().get_logger(__name__)
@@ -35,6 +38,47 @@ app.add_middleware(
 def main():
     return FileResponse("view/html/main.html")
 
+
+@app.get("/news/ticker")
+async def get_ticker_news():
+    try:
+        # 1. 스케줄러(/scheduler_start)가 5분마다 갱신한 그룹 데이터 호출
+        # final_groups 예시: [ ["id1", "id2"], ["id3"], ... ]
+        final_groups = news_aggr()
+
+        if not final_groups:
+            return {"data": []}
+
+        ticker_data = []
+
+        # 2. 각 그룹(주제별 묶음)을 순회하며 가장 최신 기사 선별
+        for group in final_groups:
+            if not group:
+                continue
+
+            # [수정] timestamp 필드를 기준으로 가장 늦은(최신) 1건 조회
+            res = es.search(index="news_raw", body={
+                "query": {"ids": {"values": group}},
+                "sort": [{"timestamp": {"order": "desc"}}],  # 최신 수집 시간 기준
+                "size": 1
+            })
+
+            hits = res['hits']['hits']
+            if hits:
+                latest_news = hits[0]
+                ticker_data.append({
+                    "_id": latest_news['_id'],
+                    "title": latest_news['_source'].get('title', '제목 없음')
+                })
+
+        # 3. 분석된 모든 주제의 대표 기사 리스트 반환
+        return {"data": ticker_data}
+
+    except Exception as e:
+        # 에러 발생 시 빈 배열을 반환하여 Ticker를 숨김 처리
+        print(f"Ticker 추출 중 오류 발생: {e}")
+        return {"data": []}
+
 @app.get("/article")
 async def view_page():
     return FileResponse("view/html/view.html")
@@ -49,6 +93,36 @@ async def get_article(news_id:str):
         return JSONResponse(content=news_info,  status_code=200)
     else:
         return JSONResponse(content=None, status_code=404)
+
+
+# JS의 sendBeacon('/log/behavior') 경로와 일치시킴
+@app.post("/log/behavior")
+async def collect_behavior_log(request: Request):
+    """
+    Pydantic 모델 없이 Request 객체에서 직접 JSON 데이터를 추출합니다.
+    """
+    try:
+        # 1. Body 데이터를 Dictionary로 변환 (await 필수)
+        data = await request.json()
+
+        # 2. 데이터 확인 (터미널 출력)
+        # JS에서 보낸 payload 구조: { news_id, user_id, session_end_time, total_logs, logs }
+        news_id = data.get("news_id")
+        user_id = data.get("user_id")
+        log_count = data.get("total_logs")
+
+        print(f"[수신 성공] News: {news_id} | User: {user_id} | Logs: {log_count}개")
+
+        # 3. (선택사항) 파일로 저장 예시 (DB 연동 전 테스트용)
+        # 데이터를 한 줄에 하나씩 JSON으로 저장 (JSON Lines 포맷)
+        # with open("user_behavior_logs.jsonl", "a", encoding="utf-8") as f:
+        #     f.write(json.dumps(data, ensure_ascii=False) + "\n")
+
+        return {"status": "ok", "message": "Data received successfully"}
+
+    except Exception as e:
+        print(f"[에러 발생] {e}")
+        return {"status": "error", "message": str(e)}
 
 
 @app.get("/sample")
@@ -125,6 +199,82 @@ FIELD_MAP = {
     "media": "media",
     "category": "category"
 }
+
+
+@app.get("/test")
+async def get_test_page():
+    return FileResponse("view/html/test.html")
+
+
+@app.get("/npti/q")
+async def get_questions(request: Request, db: Session = Depends(get_db)):
+    if not request.session.get("user_id"):
+        return JSONResponse(status_code=401, content={"message": "로그인 필요"})
+
+    query = text("SELECT question_id, question_text, npti_axis, question_ratio FROM db_npti_question")
+    result = db.execute(query).fetchall()
+    return [dict(row) for row in result]
+
+
+@app.post("/test")
+async def save_test_result(request: Request, payload: dict = Body(...), db: Session = Depends(get_db)):
+    user_id = request.session.get("user_id")
+    if not user_id:
+        return JSONResponse(status_code=401, content={"success": False, "message": "로그인이 필요합니다."})
+
+    try:
+        # 개별 답변 데이터 가공 및 저장 (insert_user_answers 호출)
+        answers_list = [
+            {"question_no": int(str(q_id).replace('q', '')), "answer_value": val}
+            for q_id, val in payload.get("answers", {}).items()
+        ]
+        insert_user_answers(db, user_id, answers_list)
+
+        # NPTI 결과 데이터 가공 (upsert_user_npti 호출)
+        scores = payload.get("scores", {})
+        npti_params = {
+            "user_id": user_id,
+            "npti_code": payload.get("npti_result"),
+            "length_score": scores.get('length'),
+            "article_score": scores.get('article'),
+            "info_score": scores.get('info'),
+            "view_score": scores.get('view')
+        }
+        upsert_user_npti(db, npti_params)
+
+        db.commit()  # 최종 커밋
+        return {"success": True, "message": "저장 완료"}
+
+    except Exception as e:
+        db.rollback()
+        return JSONResponse(status_code=500, content={"success": False, "message": str(e)})
+
+@app.get("/result")
+async def get_result_page():
+    return FileResponse("view/html/result.html")
+
+@app.post("/result")
+async def api_get_result_data(request: Request, db: Session = Depends(get_db)):
+    """결과 페이지에 필요한 모든 DB 데이터 통합 조회"""
+    user_id = request.session.get("user_id")
+    if not user_id:
+        return JSONResponse(status_code=401, content={"success": False})
+
+    # 유저 점수 조회
+    user_npti = get_user_npti(db, user_id)
+    if not user_npti:
+        return {"hasResult": False}
+
+    # 유형 상세 설명(닉네임 등) 및 차트 라벨 정보 조회
+    code_info = get_npti_code_by_code(db, user_npti['npti_code'])
+    all_types = get_all_npti_type(db)
+
+    return {
+        "hasResult": True,
+        "user_npti": user_npti,
+        "code_info": code_info,
+        "all_types": all_types
+    }
 
 @app.get("/search")
 def main():
@@ -278,10 +428,6 @@ def login(req: dict, request: Request, db: Session = Depends(get_db)):
     # JSON만 반환 (페이지 이동 X)
     return {"success": True}
 
-    # 세션에 사용자 ID 저장
-    request.session["user_id"] = req.get("user_id")
-    return FileResponse("view/html/main.html")
-
 #로그인 상태를 확인
 @app.get("/auth/me")
 def auth_me(request: Request):
@@ -365,6 +511,21 @@ def get_about(db: Session = Depends(get_db)):
         "criteria": criteria,
         "guides": guides
     }
+
+# 마이페이지 프로필 조회 - (추가)
+@app.get("/users/me/profile")
+def read_my_profile(request: Request, db: Session = Depends(get_db)):
+    user_id = request.session.get("user_id")
+    if not user_id:
+        return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+
+    profile_data = get_my_page_data(db, user_id)
+
+    if not profile_data:
+        request.session.clear()
+        return JSONResponse(status_code=404, content={"detail": "User not found"})
+
+    return profile_data
 
 # NPTI 결과 조회
 @app.get("/users/me/npti")
