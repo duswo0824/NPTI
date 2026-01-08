@@ -297,8 +297,8 @@ function userBehavior(news_id, intervalMs = 100) {
         }
 
         const dataSnapshot = {
-            timestamp: now / 1000,
-            elapsedMs: totalActiveMs / 1000,
+            timestamp: now / 100,
+            elapsedMs: totalActiveMs / 100,
             mouseX: parseFloat(normMouseX.toFixed(20)),
             mouseY: parseFloat(normMouseY.toFixed(20)),
             MMF_X: parseFloat(normMMF_X.toFixed(20)),
