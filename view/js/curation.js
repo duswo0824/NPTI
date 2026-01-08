@@ -1,6 +1,6 @@
 document.addEventListener('DOMContentLoaded', async () => {
     // 1. 설정 및 상태 변수
-    let currentSort = 'accuracy'; // 안쪽으로 이동
+    let currentSort = 'accuracy';
     let currentCategory = 'all';
     let currentPage = 1;
     let nptiResult = ''; 
@@ -86,58 +86,71 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // 4. 맞춤 뉴스 리스트 렌더링
     async function loadCurationNews(category = 'all', page = 1) {
-        if (!curationList) return;
-        curationList.innerHTML = '<div class="loading">뉴스를 분석 중입니다...</div>';
-        currentCategory = category;
-        currentPage = page;
+    if (!curationList) return;
 
-        try {
-        // FastAPI 엔드포인트 호출
-        // nptiResult, category, page, ITEMS_PER_PAGE 변수를 쿼리 파라미터로 전달
-        const response = await fetch(
-            `http://127.0.0.1:8000/curated/new?npti=${nptiResult}&category=${category}&sort_type=${currentSort}&page=${page}`
-        );
+    currentCategory = category;
+    currentPage = page;
 
-        if (!response.ok) throw new Error('데이터 로드 실패');
-        const data = await response.json(); // { total: 100, articles: [...] } 형태 예상
+    // 로딩 상태 표시
+    curationList.innerHTML = '<div class="loading">사용자님의 성향에 맞는 뉴스를 분석 중입니다...</div>';
+
+    try {
+        // 백엔드 API 호출 (nptiResult는 main.js 등에서 전역으로 선언되어 있어야 함)
+        const url = `http://127.0.0.1:8000/curated/news?npti=${nptiResult}&category=${category}&sort_type=${currentSort}&page=${page}`;
+        const response = await fetch(url);
         
-        curationList.innerHTML = ''; // 로딩 메시지 제거
+        if (!response.ok) throw new Error('네트워크 응답에 문제가 있습니다.');
 
-        // 검색 결과가 없을 경우 처리
-        if (data.articles.length === 0) {
-            curationList.innerHTML = '<p class="no-data">해당 조건에 맞는 뉴스가 없습니다.</p>';
-            return;
+        const data = await response.json(); // {articles: [...], total: 100} 구조
+
+        // [핵심] 화면을 그리는 함수(Render)를 호출하여 역할을 분리
+        renderNewsCards(data.articles);
+        
+        // 페이지네이션 생성 함수 호출
+        if (typeof renderPagination === 'function') {
+            renderPagination(data.total || 0, page);
         }
 
-        // 서버에서 받아온 실제 데이터로 리스트 생성
-        data.articles.forEach((news) => {
-            const article = document.createElement('a');
-            article.className = 'news-card';
-            
-            // 상세 페이지 이동 시 뉴스 고유 ID 전달
-            article.href = `/view/html/view.html?id=${news.id}`; 
-            
-            article.innerHTML = `
-                <div class="news-img">
-                    ${news.thumbnail ? `<img src="${news.thumbnail}" alt="news">` : '<i class="fa-regular fa-image"></i>'}
-                </div>
-                <div class="news-info">
-                    <h3>[${news.category.toUpperCase()}] ${news.title}</h3>
-                    <p>${news.summary}</p>
-                    <div class="news-meta">${news.publisher || 'NPTI Curation'} | ${news.date || '2026-01-08'}</div>
-                </div>
-            `;
-            curationList.appendChild(article);
-        });
-
-        // 서버에서 알려준 '전체 개수(data.total)'를 기반으로 페이지네이션 생성
-        renderPagination(data.total, page);
-
     } catch (error) {
-        console.error('Error fetching news:', error);
-        curationList.innerHTML = '<p class="error-msg">뉴스를 불러오는 중 오류가 발생했습니다.</p>';
+        console.error('Error:', error);
+        curationList.innerHTML = '<p class="error-msg">데이터를 가져오는 중 오류가 발생했습니다. 서버 상태를 확인해주세요.</p>';
     }
 }// loadCurationNews 함수 종료
+
+function renderNewsCards(articles) {
+    // 기존 내용(로딩 메시지 등) 삭제
+    curationList.innerHTML = '';
+
+    // 기사가 없을 경우 처리
+    if (!articles || articles.length === 0) {
+        curationList.innerHTML = '<p class="no-data">해당 조건에 맞는 뉴스가 아직 없습니다.</p>';
+        return;
+    }
+
+    // 배열을 돌며 HTML 요소 동적 생성
+    articles.forEach(news => {
+        const articleHtml = `
+            <div class="news-card">
+                <div class="news-img">
+                    <img src="${news.thumbnail || '/view/img/default.png'}" 
+                         alt="뉴스 썸네일" 
+                         onerror="this.src='/view/img/default.png'">
+                </div>
+                <div class="news-info">
+                    <h3 onclick="location.href='/view/html/view.html?id=${news.id}'">
+                        ${news.title}
+                    </h3>
+                    <p class="summary">${news.summary}</p> <div class="news-meta">
+                        <span class="publisher">${news.publisher}</span> | 
+                        <span class="date">${news.date}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+        // 리스트에 추가
+        curationList.insertAdjacentHTML('beforeend', articleHtml);
+    });
+}
 
 // 페이지네이션 생성 함수
 function renderPagination(totalItems, currentPage) {

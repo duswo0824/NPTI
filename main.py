@@ -611,23 +611,22 @@ async def get_curated_news(
         }
     }
 
-    # 3. [핵심] 정렬 조건 처리
+    # 3. 정렬 조건 처리
     if sort_type == "latest":  # == 양옆에 공백 추가
         # 최신순 정렬 로직
         body["sort"] = [
             {"pubdate": {"order": "desc"}},
-            {"pubtime": {"order": "desc"}}
+            #{"pubtime": {"order": "desc"}}
         ]
     else:
         # 정확도순 (디폴트)
-        body["sort"] = [{"_score": "desc"}]
+        body["sort"] = [{"_score": {"order": "desc"}}]
 
     if category != "all":
         body["query"]["bool"]["filter"] = [{"term": {"category": category}}]
 
     try:
-        # 들여쓰기를 정확히 4칸으로 통일
-        res = await es.search(index=ES_INDEX, body=body)
+        res = es.search(index=ES_INDEX, body=body)
         hits = res["hits"]["hits"]
 
         # 3. 기존 search_article의 데이터 가공 방식을 그대로 활용
