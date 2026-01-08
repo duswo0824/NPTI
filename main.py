@@ -23,6 +23,10 @@ from db_index.db_user_answers import insert_user_answers
 from db_index.db_user_npti import insert_user_npti
 import json
 from elasticsearch_index.es_user_behavior import index_user_behavior
+from db_index.db_user_npti import UserNPTITable, UserNPTIResponse
+from db_index.db_articles_NPTI import ArticlesNPTITable
+from elasticsearch_index.es_raw import ES_INDEX
+
 
 app = FastAPI()
 logger = Logger().get_logger(__name__)
@@ -423,7 +427,6 @@ def check_user_id(user_id: str, db: Session = Depends(get_db)):
 @app.get("/login")
 def page_login():
     return FileResponse("view/html/login.html")
-
 
 @app.post("/login")
 def login(req: dict, request: Request, db: Session = Depends(get_db)):
