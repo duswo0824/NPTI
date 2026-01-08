@@ -44,7 +44,7 @@ def get_user_npti(db: Session, user_id: str):
 # =========================
 # 저장 / 갱신 (설문 완료 시)
 # =========================
-def upsert_user_npti(db: Session, params: dict):
+def insert_user_npti(db: Session, params: dict):
     logger.info(f"user_npti 저장/갱신: {params.get('user_id')}")
 
     sql = text("""
@@ -64,13 +64,6 @@ def upsert_user_npti(db: Session, params: dict):
             :info_score,
             :view_score
         )
-        ON DUPLICATE KEY UPDATE
-            npti_code = VALUES(npti_code),
-            length_score = VALUES(length_score),
-            article_score = VALUES(article_score),
-            info_score = VALUES(info_score),
-            view_score = VALUES(view_score),
-            updated_at = CURRENT_TIMESTAMP
     """)
 
     db.execute(sql, params)

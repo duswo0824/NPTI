@@ -20,7 +20,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from elasticsearch import Elasticsearch, ConnectionError as ESConnectionError
 from datetime import timedelta
 from db_index.db_user_answers import insert_user_answers
-from db_index.db_user_npti import upsert_user_npti
+from db_index.db_user_npti import insert_user_npti
 import json
 from elasticsearch_index.es_user_behavior import index_user_behavior
 
