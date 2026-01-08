@@ -2,7 +2,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from Naver.naver_crawling import crawling_general_news, crawling_sports_news, crawler_naver, run_fast_crawl, \
     run_slow_crawl
-from algorithm.news_NPTI import classify_npti_fast
+from algorithm.news_NPTI import classify_npti_fast, init_npti
 from bigkinds_crawling.news_raw import news_crawling
 from bigkinds_crawling.news_aggr_grouping import news_aggr
 import multiprocessing
@@ -67,6 +67,7 @@ def sch_start():
     }
     sch = AsyncIOScheduler(job_defaults=job_defaults)
     now = datetime.now(timezone(timedelta(hours=9)))
+    init_npti()
 
     # 5분(300초) 주기지만, 안전을 위해 280초(4분 40초)에 강제 종료하도록 설정
     # 그래야 5분 정각에 새 스케줄러가 시작될 때 충돌이 없습니다.
