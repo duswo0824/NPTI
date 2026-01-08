@@ -27,12 +27,6 @@ async function fetchResultData() {
             headers: { 'Content-Type': 'application/json' }
         });
 
-        // 로그인 확인: 401 응답 시 로그인 페이지로 리다이렉트
-        if (response.status === 401) {
-            location.href = "/login";
-            return null;
-        }
-
         if (!response.ok) throw new Error('서버 응답 오류');
 
         return await response.json();
@@ -46,40 +40,71 @@ async function fetchResultData() {
 async function initResultPage() {
     const res = await fetchResultData();
 
-    // 데이터가 없거나 결과값이 없는 경우 처리
-    if (!res || !res.hasResult) {
-        if (res && !res.hasResult) {
-            // 로그인 상태지만 결과가 없는 경우 테스트 페이지로 이동
-            location.href = "/test";
-        }
+    // 1. 로그인 상태이고 NPTI 진단 결과도 있는 경우 (최우선 처리)
+    if (res && res.isLoggedIn && res.hasNPTI) {
+        // 전역 세션 상태 동기화
+        globalSession.isLoggedIn = true;
+        globalSession.hasNPTI = true;
+        globalSession.nptiResult = res.user_npti.npti_code;
+
+        // 실제 화면 렌더링 함수 실행
+        renderResultToUI(res);
+        return true;
+    }
+    // 2. 로그인은 되어 있으나 아직 진단을 받지 않은 경우
+    else if (res && res.isLoggedIn && !res.hasNPTI) {
+        location.href = "/test";
         return false;
     }
+    // 3. 로그인이 되어 있지 않거나 데이터 수신에 실패한 경우
+    else {
+        location.href = "/login";
+        return false;
+    }
+}
 
-    const { user_npti, code_info, all_types } = res;
+/* UI 렌더링 전담 함수 
+- 데이터를 화면에 뿌려주는 로직을 별도로 분리
+*/
+function renderResultToUI(res) {
+    const { user_npti, code_info, all_types, user_name } = res;
 
     // A. 텍스트 정보 삽입 (db_npti_code 데이터 연결)
-    if (EL.userName()) EL.userName().textContent = userName || "독자";
+    if (EL.userName()) EL.userName().textContent = user_name || "독자";
     if (EL.nptiCode()) EL.nptiCode().textContent = user_npti.npti_code;
     if (EL.nptiName()) EL.nptiName().textContent = code_info.type_nick;
+
+    // 마침표 기준 줄바꿈 로직 적용
     if (EL.resultSummary()) {
-        EL.resultSummary().innerHTML = `<p>${code_info.type_de}</p>`;
+        const rawText = code_info.type_de || "";
+
+        // 1. 마침표(.)를 기준으로 문장을 나누고 앞뒤 공백 제거
+        // 2. 빈 문장을 제외하고 각 문장 뒤에 마침표와 <br> 추가
+        const formattedText = rawText.split('.')
+            .map(s => s.trim())
+            .filter(Boolean)
+            .join('.<br>');
+
+        // 마지막 문장에도 마침표가 있었다면 다시 붙여주기
+        const finalHtml = formattedText + (rawText.endsWith('.') ? '.' : '');
+
+        EL.resultSummary().innerHTML = `<p>${finalHtml}</p>`;
     }
 
-    // B. 차트 렌더링 (db_npti_type 및 user_npti 점수 연결)
-    const axisKeys = ['length', 'article', 'info', 'view'];
-
+    // B. 차트 렌더링 (동일)
+    const axisKeys = ['length', 'article', 'information', 'view'];
     axisKeys.forEach((key, idx) => {
-        // npti_type DB에서 해당 그룹(예: length)의 좌/우 라벨(S/L 등) 추출
         const groupPair = all_types.filter(t => t.npti_group === key);
-        if (groupPair.length < 2) return;
 
-        // DB에 저장된 가중치 점수 (float 0.0~1.0 -> 100분율로 변환)
+        if (groupPair.length < 2) {
+            console.error(`[Error] '${key}' 그룹에 해당하는 데이터를 DB에서 찾을 수 없습니다.`);
+            return;
+        }
+
         const scorePercentage = user_npti[`${key}_score`] * 100;
 
         renderChartItem(key, groupPair, scorePercentage, idx);
     });
-
-    return true;
 }
 
 /* 개별 차트 바 및 라벨 렌더링 */
@@ -119,7 +144,7 @@ function renderChartItem(key, pair, score, idx) {
         setTimeout(() => {
             bar.style.width = maxVal + "%";
 
-            // 시각적 팁: 왼쪽이 크면 바를 왼쪽 정렬, 오른쪽이 크면 오른쪽 정렬하고 싶을 때 사용
+            // 왼쪽이 크면 바를 왼쪽 정렬, 오른쪽이 크면 오른쪽 정렬하고 싶을 때 사용
             if (leftVal >= rightVal) {
                 bar.style.left = "0";
                 bar.style.right = "auto";
@@ -132,7 +157,6 @@ function renderChartItem(key, pair, score, idx) {
         }, 150);
     }
 
-    // 3. 알파벳 기호 하이라이트 (더 높은 쪽 강조)
     const charL = container.querySelector('.char-left');
     const charR = container.querySelector('.char-right');
 
