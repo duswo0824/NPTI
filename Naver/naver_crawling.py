@@ -200,7 +200,7 @@ def get_sports_article_detail(url, category_name):
         # 동영상 영역 존재 여부 확인
         video_element = soup.select_one("div.video_area, div[id^='video_area_']")
         if video_element:
-            logger.info(f"[SKIP] 동영상이 포함된 기사입니다: {url}")
+            logger.info(f"[NAVER SKIP] 동영상이 포함된 기사입니다: {url}")
             return None
 
         # 본문
@@ -354,7 +354,8 @@ async def process_article(item, cat_name, kiwi, sem):
                 "writer": (detail.get("writer") or "").replace('\\', ''),
                 "img": detail.get("imgURL"),
                 "imgCap": detail.get("imgCap"),
-                "timestamp": datetime.now(timezone(timedelta(hours=9))).isoformat(timespec='seconds')
+                "timestamp": datetime.now(timezone(timedelta(hours=9))).isoformat(timespec='seconds'),
+                "classified": False
             }
 
             # 엘라스틱서치 저장
@@ -418,7 +419,10 @@ def run_slow_crawl():
     try:
         logger.info("==========[SLOW] 30분 주기 수집 시작==========")
 
-        slow_categories = {"생활/문화": "103","IT/과학": "105"}
+        slow_categories = {"생활/문화(건강)": "103/241","생활/문화(자동차)": "103/239","생활/문화(도로)": "103/240",
+                           "생활/문화(여행)": "103/237","생활/문화(음식)": "103/238","생활/문화(패션)": "103/376",
+                           "생활/문화(공연)": "103/242","생활/문화(책)": "103/243","생활/문화(종교)": "103/244",
+                           "생활/문화(일반)": "103/245","IT/과학": "105"}
         crawling_general_news(driver, slow_categories)
         crawling_sports_news(driver)
         crawling_enter_news(driver)
@@ -584,7 +588,7 @@ def crawling_sports_news(driver):
                     detail = get_sports_article_detail(naver_url, f"스포츠/{s_name}")
 
                     if not detail:
-                        logger.info(f"[SKIP] 상세 페이지 접속 실패: {naver_url}")
+                        logger.info(f"[NAVER SKIP] 상세 페이지 접속 실패: {naver_url}")
                         continue
 
                     news_id = hashlib.sha256(detail["URL"].encode()).hexdigest()
@@ -606,7 +610,7 @@ def crawling_sports_news(driver):
                     # 하나라도 없으면 건너뜀
                     if not all(required_fields.values()):
                         missing_names = [k for k, v in required_fields.items() if not v]
-                        logger.warning(f"[SKIP] 필수 정보 누락({', '.join(missing_names)}): {naver_url}")
+                        logger.warning(f"[NAVER SKIP] 필수 정보 누락({', '.join(missing_names)}): {naver_url}")
                         continue
 
 
@@ -627,7 +631,8 @@ def crawling_sports_news(driver):
                         "img": detail.get("imgURL"),
                         "imgCap": detail.get("imgCap"),
                         "link": detail.get("URL"),
-                        "timestamp": datetime.now(timezone(timedelta(hours=9))).isoformat(timespec='seconds')
+                        "timestamp": datetime.now(timezone(timedelta(hours=9))).isoformat(timespec='seconds'),
+                        "classified": False
                     }
                     es.index(index=ES_INDEX, id=news_id, document=doc)
                     saved_count += 1
@@ -719,7 +724,7 @@ def crawling_enter_news(driver):
                     detail = get_sports_article_detail(naver_url, "연예")
 
                     if not detail:
-                        logger.warning(f"[SKIP] 상세 페이지 접속 실패: {naver_url}")
+                        logger.warning(f"[NAVER SKIP] 상세 페이지 접속 실패: {naver_url}")
                         continue
 
                     news_id = hashlib.sha256(detail["URL"].encode()).hexdigest()
@@ -741,7 +746,7 @@ def crawling_enter_news(driver):
 
                     if not all(required_fields.values()):
                         missing_names = [k for k, v in required_fields.items() if not v]
-                        logger.warning(f"[SKIP] 필수 정보 누락({', '.join(missing_names)}): {naver_url}")
+                        logger.warning(f"[NAVER SKIP] 필수 정보 누락({', '.join(missing_names)}): {naver_url}")
                         continue
 
 
@@ -762,7 +767,8 @@ def crawling_enter_news(driver):
                         "img": detail.get("imgURL"),
                         "imgCap": detail.get("imgCap"),
                         "link": detail.get("URL"),
-                        "timestamp": datetime.now(timezone(timedelta(hours=9))).isoformat(timespec='seconds')
+                        "timestamp": datetime.now(timezone(timedelta(hours=9))).isoformat(timespec='seconds'),
+                        "classified": False
                     }
 
                     # ES 저장
