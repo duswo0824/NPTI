@@ -474,7 +474,7 @@ function setupGlobalEvents(isLoggedIn, hasNPTI) {
 
     /* 접근 가드 + 파라미터 전달 */
     document.querySelectorAll(
-        'a[href*="curation.html"], a[href*="mypage.html"], a[href*="test.html"], .icon-btn.user, .btn-load-more'
+        'a[href*="curation.html"], a[href*="mypage.html"], a[href*="test.html"], .icon-btn.user, .btn-load-more, .btn-orange, .btn-diagnosis, .btn-bubble'
     ).forEach(link => {
         // 인라인 이벤트 제거
         link.removeAttribute('onclick');

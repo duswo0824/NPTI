@@ -40,41 +40,48 @@ async function fetchResultData() {
 async function initResultPage() {
     const res = await fetchResultData();
 
-    // 데이터가 아예 없는 경우 방어 로직
-    if (!res) {
-        console.error("서버 응답이 없습니다. 로그인으로 리다이렉트합니다.");
-        location.href = "/login";
-        return false;
-    }
+    // 1. 서버 응답 자체를 먼저 확인 (튕기지 않게 주석 유지)
+    console.log("서버 응답 데이터(res):", res);
 
-    // [상태 일치] globalSession 객체와 서버 응답 데이터를 동기화
-    // Boolean()을 사용하여 서버에서 1/0 혹은 "true"/"false"로 와도 정확히 일치시킴
+    if (!res) {
+        console.error("서버 응답이 null입니다. 백엔드 터미널 로그를 확인하세요.");
+        return false; // 리다이렉트 안 하고 여기서 멈춤
+    }
+    
     globalSession.isLoggedIn = Boolean(res.isLoggedIn);
     globalSession.hasNPTI = Boolean(res.hasNPTI);
 
-    // 1. 로그인 완료 및 진단 결과 존재 (성공 케이스)
+    console.log("로그인 상태:", globalSession.isLoggedIn);
+    console.log("진단 결과 유무:", globalSession.hasNPTI);
+    
+    // 3. 성공 케이스
     if (globalSession.isLoggedIn && globalSession.hasNPTI) {
         if (res.user_npti) {
             globalSession.nptiResult = res.user_npti.npti_code;
-
-            // 앞서 완성된 UI 렌더링 함수 호출
             renderResultToUI(res);
             return true;
-        } else {
-            console.error("hasNPTI는 true이나 상세 데이터가 없습니다.");
+        }
+    }
+
+    // 3. 성공 케이스
+    if (globalSession.isLoggedIn && globalSession.hasNPTI) {
+        if (res.user_npti) {
+            globalSession.nptiResult = res.user_npti.npti_code;
+            renderResultToUI(res);
+            return true;
         }
     }
 
     // 2. 로그인은 되어 있으나 진단 결과가 없는 경우
     if (globalSession.isLoggedIn && !globalSession.hasNPTI) {
         console.warn("진단 결과가 없습니다. 테스트 페이지로 이동합니다.");
-        location.href = "/test";
+        // location.href = "/test";
         return false;
     }
 
     // 3. 비로그인 상태이거나 기타 예외 상황
     console.error("로그인 상태가 아닙니다. 로그인 페이지로 이동합니다.");
-    location.href = "/login";
+    // location.href = "/login";
     return false;
 }
 
