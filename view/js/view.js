@@ -245,7 +245,8 @@ function userBehavior(news_id, intervalMs = 100) {
 
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('scroll', handleScroll);
-
+    let timeSinceLastLog = 0;
+    const log_interval_ms = 1000;
     // ------------------------------------------------------------------------
     // [Timer 1] 100ms 간격 데이터 수집 (Collection Loop)
     // ------------------------------------------------------------------------
@@ -258,53 +259,54 @@ function userBehavior(news_id, intervalMs = 100) {
 
         totalActiveMs += timeDelta;
 
-        const winWidth = window.innerWidth || 1;
-        const winHeight = window.innerHeight || 1;
-        const scrollX = window.scrollX || window.pageXOffset;
-        const scrollY = window.scrollY || window.pageYOffset;
+        if (timeSinceLastLog) >= log_interval_ms {
+            timeSinceLastLog -= log_interval_ms;
 
-        // Rescaling Logic
-        let normMouseX = (state.currentX - scrollX) / winWidth;
-        let normMouseY = (state.currentY - scrollY) / winHeight;
-        let normMMF_X = state.cumulativeX / winWidth;
-        let normMMF_Y = state.cumulativeY / winHeight;
-        let normMSF_Y = state.cumulativeScrollY / winHeight;
+            const winWidth = window.innerWidth || 1;
+            const winHeight = window.innerHeight || 1;
+            const scrollX = window.scrollX || window.pageXOffset;
+            const scrollY = window.scrollY || window.pageYOffset;
+            const elapsedSeconds = totalActiveMs / 1000;
+            let normMouseX = (state.currentX - scrollX) / winWidth;
+            let normMouseY = (state.currentY - scrollY) / winHeight;
+            let normMMF_X = elapsedSeconds > 0 ? (state.cumulativeX / winWidth) / elapsedSeconds : 0;
+            let normMMF_Y = elapsedSeconds > 0 ? (state.cumulativeY / winHeight) / elapsedSeconds : 0;
+            let normMSF_Y = elapsedSeconds > 0 ? (state.cumulativeScrollY / winHeight) / elapsedSeconds : 0;
+            let baseline = 0;
 
-        let distance = -1;
-        let baseline = 0;
+            if (targetDiv) { //??????????????????????????
+                const rect = targetDiv.getBoundingClientRect();
+                const absLeft = rect.left + scrollX;
+                const absTop = rect.top + scrollY;
+                const absRight = absLeft + rect.width;
+                const absBottom = absTop + rect.height;
 
-        if (targetDiv) {
-            const rect = targetDiv.getBoundingClientRect();
-            const absLeft = rect.left + scrollX;
-            const absTop = rect.top + scrollY;
-            const absRight = absLeft + rect.width;
-            const absBottom = absTop + rect.height;
+                const divCenterX = absLeft + (rect.width / 2);
+                const divCenterY = absTop + (rect.height / 2);
 
-            const divCenterX = absLeft + (rect.width / 2);
-            const divCenterY = absTop + (rect.height / 2);
+                distance = Math.sqrt(
+                    Math.pow(state.currentX - divCenterX, 2) +
+                    Math.pow(state.currentY - divCenterY, 2)
+                );
 
-            distance = Math.sqrt(
-                Math.pow(state.currentX - divCenterX, 2) +
-                Math.pow(state.currentY - divCenterY, 2)
-            );
+                const isHovering = (
+                    state.currentX >= absLeft && state.currentX <= absRight &&
+                    state.currentY >= absTop && state.currentY <= absBottom
+                );
 
-            const isHovering = (
-                state.currentX >= absLeft && state.currentX <= absRight &&
-                state.currentY >= absTop && state.currentY <= absBottom
-            );
+                baseline = isHovering ? 1 : (distance > 0 ? (1 / distance) : 0);
+            }
 
-            baseline = isHovering ? 1 : (distance > 0 ? (1 / distance) : 0);
+
         }
 
         const dataSnapshot = {
-            timestamp: now / 100,
-            elapsedMs: totalActiveMs / 100,
+            elapsedTime: parseFloat(elapsedSeconds.toFixed(3)), // 초 단위
             mouseX: parseFloat(normMouseX.toFixed(20)),
             mouseY: parseFloat(normMouseY.toFixed(20)),
             MMF_X: parseFloat(normMMF_X.toFixed(20)),
             MMF_Y: parseFloat(normMMF_Y.toFixed(20)),
             MSF_Y: parseFloat(normMSF_Y.toFixed(20)),
-            distTarget: parseFloat(distance.toFixed(20)),
             baseline: parseFloat(baseline.toFixed(20)),
         };
 
@@ -314,17 +316,6 @@ function userBehavior(news_id, intervalMs = 100) {
 
     }, intervalMs);
 
-    // ------------------------------------------------------------------------
-    // [Timer 2] 10초 간격 전송 (Transmission Loop)
-    // ------------------------------------------------------------------------
-    const sendTimerId = setInterval(() => {
-        // [변경] 전역 함수 호출
-        sendDataToServer();
-    }, SEND_INTERVAL_MS);
-
-    // ------------------------------------------------------------------------
-    // Clean-up
-    // ------------------------------------------------------------------------
     return {
         stop: () => {
             window.removeEventListener('mousemove', handleMouseMove);
