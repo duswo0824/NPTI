@@ -28,6 +28,7 @@ def ensure_index():
                 "mouseY": {"type": "float"},
                 "timestamp": {"type": "integer"},
                 "baseline" :{"type": "float"},
+                "stored_time": {"type": "date", "format": "strict_date_optional_time||epoch_millis"},
             }
         }
     }

@@ -12,11 +12,6 @@ document.addEventListener('DOMContentLoaded', async function () {
     try {
         // main.js가 먼저 로드되었으므로 함수 호출 가능
         sessionData = await loadSessionState();
-
-        // main.js의 globalSession 상태 업데이트 (선택 사항)
-        if (typeof globalSession !== 'undefined') {
-            Object.assign(globalSession, sessionData);
-        }
     } catch (e) {
         console.error("세션 정보를 가져오는 중 오류 발생(main.js 로드 확인 필요):", e);
     }
@@ -34,9 +29,6 @@ document.addEventListener('DOMContentLoaded', async function () {
     } else {
         alert("잘못된 접근입니다.");
     }
-
-
-
 });
 
 // 페이지 이탈(닫기, 새로고침, 뒤로가기) 시 데이터 전송
@@ -122,6 +114,8 @@ function initRelatedNews(related_news) {
     });
 }
 
+let behaviorLogs = [];
+
 function sendDataToServer() {
     // 1. 보낼 데이터가 없으면 중단
     if (!behaviorLogs || behaviorLogs.length === 0) return;
@@ -153,7 +147,7 @@ function sendDataToServer() {
             keepalive:true
         })
         .then(response => {
-            if (response.of) {
+            if (response.ok) {
                 console.log(`[Data Transfer] fetch(keepalive) 전송 성공! ${logsToSend.length}개`);
             } else {
                 console.error("[Data Trnasfer] fecth 서버 응답 에러:", response.status);
@@ -166,66 +160,63 @@ function sendDataToServer() {
     }
 }
 
-function userBehavior(news_id, intervalMs = 100) {
+function userBehavior(news_id, intervalMs = 40) {
     // ------------------------------------------------------------------------
-    // [설정] 서버 전송 관련 설정
+    // [설정]
     // ------------------------------------------------------------------------
-    const SERVER_URL = '/log/behavior';
-    const SEND_INTERVAL_MS = 10000;         // 10초마다 전송
-    let behaviorBuffer = [];                // 전송 전 데이터를 모아둘 버퍼
+    const LOG_INTERVAL_MS = 1000; // 1초 단위로 데이터 처리 및 저장
+    let timeSinceLastLog = 0;
 
     // ------------------------------------------------------------------------
-    // [기존 변수] 상태 및 활성 추적 변수
+    // [상태 변수]
     // ------------------------------------------------------------------------
-    let totalActiveMs = 0;
+    let totalActiveMs = 0; // 활성화 누적 시간
     let lastCheckTime = Date.now();
+
+    // Page Active Check
     let isMouseInside = true;
     let isScrolling = false;
     let scrollTimeout = null;
 
+    // Data Accumulation
     const state = {
         currentX: 0, currentY: 0,
-        cumulativeX: 0, cumulativeY: 0,
+        cumulativeX: 0, cumulativeY: 0,      // MMF 계산용 (계속 누적)
         lastX: null, lastY: null,
+
         scrollTop: window.scrollY || window.pageYOffset,
-        cumulativeScrollY: 0,
+        cumulativeScrollY: 0,                // MSF 계산용 (계속 누적)
         lastScrollTop: window.scrollY || window.pageYOffset
     };
 
     const targetDiv = document.getElementById('viewBody');
 
     // ------------------------------------------------------------------------
-    // [이벤트 핸들러] 활성 상태 추적
+    // [이벤트 핸들러]
     // ------------------------------------------------------------------------
     const handleMouseEnter = () => { isMouseInside = true; };
     const handleMouseLeave = () => { isMouseInside = false; };
 
     const trackScrollState = () => {
         isScrolling = true;
-        if (scrollTimeout) clearTimeout(scrollTimeout);
-        scrollTimeout = setTimeout(() => {
-            isScrolling = false;
-        }, 3000);
+        clearTimeout(scrollTimeout);
+        scrollTimeout = setTimeout(() => { isScrolling = false; }, 3000);
     };
-
-    document.documentElement.addEventListener('mouseenter', handleMouseEnter);
-    document.documentElement.addEventListener('mouseleave', handleMouseLeave);
-    window.addEventListener('scroll', trackScrollState);
 
     const isPageActive = () => {
         return !document.hidden && (document.hasFocus() || isMouseInside || isScrolling);
     };
 
-    // ------------------------------------------------------------------------
-    // [이벤트 핸들러] 데이터 수집 (마우스/스크롤 좌표)
-    // ------------------------------------------------------------------------
+    // 마우스 이동 누적 (이벤트 발생 시 즉시 반영)
     const handleMouseMove = (e) => {
         if (!isPageActive()) return;
-        const x = e.pageX;
-        const y = e.pageY;
+        const x = e.clientX;
+        const y = e.clientY;
+
         state.currentX = x;
         state.currentY = y;
-        if (state.lastX !== null && state.lastY !== null){
+
+        if (state.lastX !== null && state.lastY !== null) {
             state.cumulativeX += Math.abs(x - state.lastX);
             state.cumulativeY += Math.abs(y - state.lastY);
         }
@@ -233,87 +224,116 @@ function userBehavior(news_id, intervalMs = 100) {
         state.lastY = y;
     };
 
+    // 스크롤 누적
     const handleScroll = () => {
         if (!isPageActive()) return;
-        const currentScrollY = window.scrollY || window.pageYOffset || document.documentElement.scrollTop;
-        state.scrollTop = currentScrollY;
+        const currentScrollY = window.scrollY || window.pageYOffset; // 표준화
+
         if (state.lastScrollTop !== null) {
             state.cumulativeScrollY += Math.abs(currentScrollY - state.lastScrollTop);
         }
+        state.scrollTop = currentScrollY;
         state.lastScrollTop = currentScrollY;
     };
 
+    // 리스너 등록
+    document.documentElement.addEventListener('mouseenter', handleMouseEnter);
+    document.documentElement.addEventListener('mouseleave', handleMouseLeave);
+    window.addEventListener('scroll', trackScrollState);
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('scroll', handleScroll);
-    let timeSinceLastLog = 0;
-    const log_interval_ms = 1000;
+
+
     // ------------------------------------------------------------------------
-    // [Timer 1] 100ms 간격 데이터 수집 (Collection Loop)
+    // [Timer] 0.1초마다 호출되지만, 데이터 저장은 1초마다 수행
     // ------------------------------------------------------------------------
     const collectTimerId = setInterval(() => {
         const now = Date.now();
         const timeDelta = now - lastCheckTime;
         lastCheckTime = now;
 
-        if (!isPageActive()) return;
-
-        totalActiveMs += timeDelta;
-
-        if (timeSinceLastLog) >= log_interval_ms {
-            timeSinceLastLog -= log_interval_ms;
-
-            const winWidth = window.innerWidth || 1;
-            const winHeight = window.innerHeight || 1;
-            const scrollX = window.scrollX || window.pageXOffset;
-            const scrollY = window.scrollY || window.pageYOffset;
-            const elapsedSeconds = totalActiveMs / 1000;
-            let normMouseX = (state.currentX - scrollX) / winWidth;
-            let normMouseY = (state.currentY - scrollY) / winHeight;
-            let normMMF_X = elapsedSeconds > 0 ? (state.cumulativeX / winWidth) / elapsedSeconds : 0;
-            let normMMF_Y = elapsedSeconds > 0 ? (state.cumulativeY / winHeight) / elapsedSeconds : 0;
-            let normMSF_Y = elapsedSeconds > 0 ? (state.cumulativeScrollY / winHeight) / elapsedSeconds : 0;
-            let baseline = 0;
-
-            if (targetDiv) { //??????????????????????????
-                const rect = targetDiv.getBoundingClientRect();
-                const absLeft = rect.left + scrollX;
-                const absTop = rect.top + scrollY;
-                const absRight = absLeft + rect.width;
-                const absBottom = absTop + rect.height;
-
-                const divCenterX = absLeft + (rect.width / 2);
-                const divCenterY = absTop + (rect.height / 2);
-
-                distance = Math.sqrt(
-                    Math.pow(state.currentX - divCenterX, 2) +
-                    Math.pow(state.currentY - divCenterY, 2)
-                );
-
-                const isHovering = (
-                    state.currentX >= absLeft && state.currentX <= absRight &&
-                    state.currentY >= absTop && state.currentY <= absBottom
-                );
-
-                baseline = isHovering ? 1 : (distance > 0 ? (1 / distance) : 0);
-            }
-
-
+        if (!isPageActive()) {
+            console.log("PageInactive - 데이터 수집 중단");
+            return;
         }
 
-        const dataSnapshot = {
-            elapsedTime: parseFloat(elapsedSeconds.toFixed(3)), // 초 단위
-            mouseX: parseFloat(normMouseX.toFixed(20)),
-            mouseY: parseFloat(normMouseY.toFixed(20)),
-            MMF_X: parseFloat(normMMF_X.toFixed(20)),
-            MMF_Y: parseFloat(normMMF_Y.toFixed(20)),
-            MSF_Y: parseFloat(normMSF_Y.toFixed(20)),
-            baseline: parseFloat(baseline.toFixed(20)),
-        };
 
-        // [변경] 내부 버퍼 대신 전역 배열 behaviorLogs에 push
-        behaviorLogs.push(dataSnapshot);
-        console.log(dataSnapshot);
 
+        totalActiveMs += timeDelta;
+        timeSinceLastLog += timeDelta;
+
+        // 1초(1000ms)가 지났는지 확인
+        if (timeSinceLastLog >= LOG_INTERVAL_MS) {
+            timeSinceLastLog -= LOG_INTERVAL_MS;
+
+            // 화면 크기 및 스크롤 위치 (정규화를 위해 필요)
+            const winWidth = window.innerWidth || 1;
+            const winHeight = window.innerHeight || 1;
+//            const scrollX = window.scrollX || window.pageXOffset;
+//            const scrollY = window.scrollY || window.pageYOffset;
+
+            const totalActiveSeconds = Math.max(totalActiveMs / 1000, 0.001);
+
+            // --- Feature 1: Mouse X, Y (0~1 Rescaled) ---
+            // 현재 마우스 위치는 문서 전체 기준(pageX)이므로, 뷰포트 기준(clientX)으로 변환 필요
+            // state.currentX(문서기준) - scrollX = 뷰포트 기준 X
+            let normMouseX = state.currentX/ winWidth;
+            let normMouseY = state.currentY / winHeight;
+
+            // --- Feature 2: MMF, MSF (Rescaled Length) ---
+            // 논문 정의: "moving length ... rescaled ... by screen height/width"
+            // 시간으로 나누지 않고 누적 거리를 화면 크기로 나눕니다.
+            let normMMF_X = (state.cumulativeX / winWidth) / totalActiveSeconds;
+            let normMMF_Y = (state.cumulativeY / winHeight) / totalActiveSeconds;
+            let normMSF_Y = (state.cumulativeScrollY / winHeight) / totalActiveSeconds;
+
+            // --- Feature 3: Baseline 3 (height_3) ---
+            let baseline = 0;
+            if (targetDiv) {
+                const rect = targetDiv.getBoundingClientRect();
+                const mouseViewportX = state.currentX;
+                const mouseViewportY = state.currentY;
+
+                // 1. Hover Check
+                const isHovering = (
+                    mouseViewportX >= rect.left && mouseViewportX <= rect.right &&
+                    mouseViewportY >= rect.top && mouseViewportY <= rect.bottom
+                );
+
+                if (isHovering) {
+                    baseline = 1;
+                } else {
+                    // 2. Distance to Rectangle (Not Center!)
+                    // 사각형 밖일 때, 가장 가까운 변까지의 거리 계산
+                    // dx: 사각형 왼쪽보다 작으면 왼쪽 거리, 오른쪽보다 크면 오른쪽 거리, 사이면 0
+                    const dx = Math.max(rect.left - mouseViewportX, 0, mouseViewportX - rect.right);
+                    const dy = Math.max(rect.top - mouseViewportY, 0, mouseViewportY - rect.bottom);
+
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    // 거리가 0이면(경계선 등) Infinity 방지
+                    baseline = 1 / (1+distance);
+                }
+            }
+
+            // 데이터 스냅샷 생성
+            const dataSnapshot = {
+                elapsedMs: parseFloat((totalActiveMs / 1000).toFixed(3)),
+                mouseX: parseFloat(normMouseX.toFixed(10)),
+                mouseY: parseFloat(normMouseY.toFixed(10)),
+                MMF_X: parseFloat(normMMF_X.toFixed(10)), // 소수점 20자리는 너무 깁니다. 5자리 정도면 충분
+                MMF_Y: parseFloat(normMMF_Y.toFixed(10)),
+                MSF_Y: parseFloat(normMSF_Y.toFixed(10)),
+                baseline: parseFloat(baseline.toFixed(10)),
+                // read: (논문에 있던 read 0/1 컬럼은 별도 로직이 필요하면 여기에 추가)
+            };
+            behaviorLogs.push(dataSnapshot);
+            console.log(dataSnapshot);
+            if (behaviorLogs.length >= 10) {
+                console.log("10초 경과 : 중간 데이터 전송");
+                sendDataToServer();
+            }
+        }
     }, intervalMs);
 
     return {
@@ -323,12 +343,11 @@ function userBehavior(news_id, intervalMs = 100) {
             document.documentElement.removeEventListener('mouseenter', handleMouseEnter);
             document.documentElement.removeEventListener('mouseleave', handleMouseLeave);
             window.removeEventListener('scroll', trackScrollState);
-
             if (scrollTimeout) clearTimeout(scrollTimeout);
             clearInterval(collectTimerId);
-            clearInterval(sendTimerId);
 
-            // [변경] 종료 직전 전역 함수 호출로 남은 데이터 전송
+            // 종료 시 남은 데이터 전송
+            console.log("남은 데이터 전송")
             sendDataToServer();
         }
     };
