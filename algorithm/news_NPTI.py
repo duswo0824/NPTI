@@ -9,6 +9,7 @@ from sqlalchemy import Column, String, DateTime
 from sqlalchemy.sql import func
 from database import Base, get_engine, SessionLocal
 import warnings
+from sqlalchemy.exc import IntegrityError
 
 logger = Logger().get_logger(__name__)
 
@@ -135,6 +136,15 @@ def classify_npti_fast():
                 )
                 continue
 
+            exists = (
+                db.query(ArticlesNPTI)
+                .filter(ArticlesNPTI.news_id == news_id)
+                .first()
+            )
+            if exists:
+                logger.info(f"[기사 분류 스킵] 이미 존재: {news_id}")
+                continue
+
             try:
                 length_type = "L" if len(content) >= 1000 else "S"
                 ct = model_ct.predict(tfidf_ct.transform([content]))[0].upper()
@@ -152,9 +162,10 @@ def classify_npti_fast():
                     NPTI_code=npti_code,
                     updated_at=now
                 )
+
                 db.add(record)
-                count += 1
                 db.commit()
+                count += 1
 
                 es.update(
                     index=ES_INDEX,
@@ -167,7 +178,18 @@ def classify_npti_fast():
                     }
                 )
 
+            except IntegrityError as e:
+                db.rollback()
+                logger.warning(f"[중복 기사] DB IntegrityError news_id={news_id}")
+                es.update(
+                    index=ES_INDEX,
+                    id=news_id,
+                    body={"doc": {"classified": True, "classified_reason": "duplicate"}}
+                )
+                continue
+
             except Exception as e:
+                db.rollback()
                 logger.error(f"[기사 분류 실패] news_id={news_id} / {e}")
                 err_article(news_id, e)
                 logger.info(f"기사 분류 실패 에러로그 저장 완료 - {news_id}")
