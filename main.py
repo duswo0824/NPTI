@@ -229,7 +229,7 @@ async def save_test_result(request: Request, payload: dict = Body(...), db: Sess
         ]
         insert_user_answers(db, user_id, answers_list)
 
-        # NPTI 결과 데이터 가공 (upsert_user_npti 호출)
+        # NPTI 결과 데이터 가공 (insert_user_npti 호출)
         scores = payload.get("scores", {})
         npti_params = {
             "user_id": user_id,
@@ -239,7 +239,7 @@ async def save_test_result(request: Request, payload: dict = Body(...), db: Sess
             "info_score": scores.get('info'),
             "view_score": scores.get('view')
         }
-        upsert_user_npti(db, npti_params)
+        insert_user_npti(db, npti_params)
 
         db.commit()  # 최종 커밋
         return {"success": True, "message": "저장 완료"}
