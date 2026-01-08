@@ -602,13 +602,13 @@ async def get_user_npti(user_id: str, db: Session = Depends(get_db)):
     user_data, type_nick = result
     npti_code_str = user_data.npti_code  # 예: 'STFN'
 
-    # 2. 각 알파벳에 매칭되는 NPTI_KOR 값 가져오기 (npti_type 테이블 조회)
+    # 2. 각 알파벳에 매칭되는 npti_kor 값 가져오기 (npti_type 테이블 조회)
     # npti_type 테이블에서 NPTI_type 컬럼이 코드에 포함된 것들만 조회
     chars = list(npti_code_str)
     type_items = db.query(npti_type_response).filter(npti_type_response.NPTI_type.in_(chars)).all()
 
     # 순서(S-T-F-N)에 맞게 딕셔너리로 맵핑 생성
-    kor_map = {item.NPTI_type: item.NPTI_KOR for item in type_items}
+    kor_map = {item.NPTI_type: item.npti_kor for item in type_items}
 
     # 최종 리스트 생성 (예: ["짧은", "이야기형", "객관적", "비판적"])
     npti_kor_list = [kor_map.get(c, "") for c in chars]
