@@ -20,7 +20,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from elasticsearch import Elasticsearch, ConnectionError as ESConnectionError
 from datetime import timedelta
 from db_index.db_user_answers import insert_user_answers
-from db_index.db_user_npti import upsert_user_npti
+from db_index.db_user_npti import insert_user_npti
 import json
 from elasticsearch_index.es_user_behavior import index_user_behavior
 from db_index.db_user_npti import UserNPTITable, UserNPTIResponse
@@ -44,45 +44,45 @@ def main():
     return FileResponse("view/html/main.html")
 
 
-@app.get("/news/ticker")
-async def get_ticker_news():
-    try:
-        # 1. 스케줄러(/scheduler_start)가 5분마다 갱신한 그룹 데이터 호출
-        # final_groups 예시: [ ["id1", "id2"], ["id3"], ... ]
-        final_groups = news_aggr()
-
-        if not final_groups:
-            return {"data": []}
-
-        ticker_data = []
-
-        # 2. 각 그룹(주제별 묶음)을 순회하며 가장 최신 기사 선별
-        for group in final_groups:
-            if not group:
-                continue
-
-            # [수정] timestamp 필드를 기준으로 가장 늦은(최신) 1건 조회
-            res = es.search(index="news_raw", body={
-                "query": {"ids": {"values": group}},
-                "sort": [{"timestamp": {"order": "desc"}}],  # 최신 수집 시간 기준
-                "size": 1
-            })
-
-            hits = res['hits']['hits']
-            if hits:
-                latest_news = hits[0]
-                ticker_data.append({
-                    "_id": latest_news['_id'],
-                    "title": latest_news['_source'].get('title', '제목 없음')
-                })
-
-        # 3. 분석된 모든 주제의 대표 기사 리스트 반환
-        return {"data": ticker_data}
-
-    except Exception as e:
-        # 에러 발생 시 빈 배열을 반환하여 Ticker를 숨김 처리
-        print(f"Ticker 추출 중 오류 발생: {e}")
-        return {"data": []}
+# @app.get("/news/ticker")
+# async def get_ticker_news():
+#     try:
+#         # 1. 스케줄러(/scheduler_start)가 5분마다 갱신한 그룹 데이터 호출
+#         # final_groups 예시: [ ["id1", "id2"], ["id3"], ... ]
+#         final_groups = news_aggr()
+#
+#         if not final_groups:
+#             return {"data": []}
+#
+#         ticker_data = []
+#
+#         # 2. 각 그룹(주제별 묶음)을 순회하며 가장 최신 기사 선별
+#         for group in final_groups:
+#             if not group:
+#                 continue
+#
+#             # [수정] timestamp 필드를 기준으로 가장 늦은(최신) 1건 조회
+#             res = es.search(index="news_raw", body={
+#                 "query": {"ids": {"values": group}},
+#                 "sort": [{"timestamp": {"order": "desc"}}],  # 최신 수집 시간 기준
+#                 "size": 1
+#             })
+#
+#             hits = res['hits']['hits']
+#             if hits:
+#                 latest_news = hits[0]
+#                 ticker_data.append({
+#                     "_id": latest_news['_id'],
+#                     "title": latest_news['_source'].get('title', '제목 없음')
+#                 })
+#
+#         # 3. 분석된 모든 주제의 대표 기사 리스트 반환
+#         return {"data": ticker_data}
+#
+#     except Exception as e:
+#         # 에러 발생 시 빈 배열을 반환하여 Ticker를 숨김 처리
+#         print(f"Ticker 추출 중 오류 발생: {e}")
+#         return {"data": []}
 
 @app.get("/article")
 async def view_page():
@@ -214,9 +214,9 @@ async def get_questions(request: Request, db: Session = Depends(get_db)):
     if not request.session.get("user_id"):
         return JSONResponse(status_code=401, content={"message": "로그인 필요"})
 
-    query = text("SELECT question_id, question_text, npti_axis, question_ratio FROM db_npti_question")
+    query = text("SELECT question_id, question_text, npti_axis, question_ratio FROM npti_question")
     result = db.execute(query).fetchall()
-    return [dict(row) for row in result]
+    return [dict(row._mapping) for row in result]
 
 
 @app.post("/test")
@@ -233,7 +233,7 @@ async def save_test_result(request: Request, payload: dict = Body(...), db: Sess
         ]
         insert_user_answers(db, user_id, answers_list)
 
-        # NPTI 결과 데이터 가공 (upsert_user_npti 호출)
+        # NPTI 결과 데이터 가공 (insert_user_npti 호출)
         scores = payload.get("scores", {})
         npti_params = {
             "user_id": user_id,
@@ -243,7 +243,7 @@ async def save_test_result(request: Request, payload: dict = Body(...), db: Sess
             "info_score": scores.get('info'),
             "view_score": scores.get('view')
         }
-        upsert_user_npti(db, npti_params)
+        insert_user_npti(db, npti_params)
 
         db.commit()  # 최종 커밋
         return {"success": True, "message": "저장 완료"}
@@ -258,25 +258,36 @@ async def get_result_page():
 
 @app.post("/result")
 async def api_get_result_data(request: Request, db: Session = Depends(get_db)):
-    """결과 페이지에 필요한 모든 DB 데이터 통합 조회"""
     user_id = request.session.get("user_id")
     if not user_id:
-        return JSONResponse(status_code=401, content={"success": False})
+        return JSONResponse(
+            status_code=401, content={"success": False, "isLoggedIn": False}
+        )
 
-    # 유저 점수 조회
+    # 유저 이름 추가 (세션에 저장되어 있다고 가정)
+    # user_info = db.query(UserInfo).filter(UserInfo.user_id == user_id).first()
+    # user_name = user_info.user_name if user_info else "독자"
+    user_name = request.session.get("user_name", "독자")
+
+    # 2. 유저 점수 조회
     user_npti = get_user_npti(db, user_id)
     if not user_npti:
-        return {"hasResult": False}
+        return {
+            "success": True, "isLoggedIn": True, "hasNPTI": False  # 프론트에서 /test로 리다이렉트 시킴
+        }
 
-    # 유형 상세 설명(닉네임 등) 및 차트 라벨 정보 조회
+    # 3. 유형 상세 정보 및 차트 라벨 정보 조회
     code_info = get_npti_code_by_code(db, user_npti['npti_code'])
     all_types = get_all_npti_type(db)
 
     return {
-        "hasResult": True,
+        "success": True,
+        "isLoggedIn": True,
+        "hasNPTI": True,
         "user_npti": user_npti,
         "code_info": code_info,
-        "all_types": all_types
+        "all_types": all_types,
+        "user_name": user_name
     }
 
 @app.get("/search")
