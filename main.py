@@ -40,45 +40,45 @@ def main():
     return FileResponse("view/html/main.html")
 
 
-@app.get("/news/ticker")
-async def get_ticker_news():
-    try:
-        # 1. 스케줄러(/scheduler_start)가 5분마다 갱신한 그룹 데이터 호출
-        # final_groups 예시: [ ["id1", "id2"], ["id3"], ... ]
-        final_groups = news_aggr()
-
-        if not final_groups:
-            return {"data": []}
-
-        ticker_data = []
-
-        # 2. 각 그룹(주제별 묶음)을 순회하며 가장 최신 기사 선별
-        for group in final_groups:
-            if not group:
-                continue
-
-            # [수정] timestamp 필드를 기준으로 가장 늦은(최신) 1건 조회
-            res = es.search(index="news_raw", body={
-                "query": {"ids": {"values": group}},
-                "sort": [{"timestamp": {"order": "desc"}}],  # 최신 수집 시간 기준
-                "size": 1
-            })
-
-            hits = res['hits']['hits']
-            if hits:
-                latest_news = hits[0]
-                ticker_data.append({
-                    "_id": latest_news['_id'],
-                    "title": latest_news['_source'].get('title', '제목 없음')
-                })
-
-        # 3. 분석된 모든 주제의 대표 기사 리스트 반환
-        return {"data": ticker_data}
-
-    except Exception as e:
-        # 에러 발생 시 빈 배열을 반환하여 Ticker를 숨김 처리
-        print(f"Ticker 추출 중 오류 발생: {e}")
-        return {"data": []}
+# @app.get("/news/ticker")
+# async def get_ticker_news():
+#     try:
+#         # 1. 스케줄러(/scheduler_start)가 5분마다 갱신한 그룹 데이터 호출
+#         # final_groups 예시: [ ["id1", "id2"], ["id3"], ... ]
+#         final_groups = news_aggr()
+#
+#         if not final_groups:
+#             return {"data": []}
+#
+#         ticker_data = []
+#
+#         # 2. 각 그룹(주제별 묶음)을 순회하며 가장 최신 기사 선별
+#         for group in final_groups:
+#             if not group:
+#                 continue
+#
+#             # [수정] timestamp 필드를 기준으로 가장 늦은(최신) 1건 조회
+#             res = es.search(index="news_raw", body={
+#                 "query": {"ids": {"values": group}},
+#                 "sort": [{"timestamp": {"order": "desc"}}],  # 최신 수집 시간 기준
+#                 "size": 1
+#             })
+#
+#             hits = res['hits']['hits']
+#             if hits:
+#                 latest_news = hits[0]
+#                 ticker_data.append({
+#                     "_id": latest_news['_id'],
+#                     "title": latest_news['_source'].get('title', '제목 없음')
+#                 })
+#
+#         # 3. 분석된 모든 주제의 대표 기사 리스트 반환
+#         return {"data": ticker_data}
+#
+#     except Exception as e:
+#         # 에러 발생 시 빈 배열을 반환하여 Ticker를 숨김 처리
+#         print(f"Ticker 추출 중 오류 발생: {e}")
+#         return {"data": []}
 
 @app.get("/article")
 async def view_page():
@@ -210,9 +210,9 @@ async def get_questions(request: Request, db: Session = Depends(get_db)):
     if not request.session.get("user_id"):
         return JSONResponse(status_code=401, content={"message": "로그인 필요"})
 
-    query = text("SELECT question_id, question_text, npti_axis, question_ratio FROM db_npti_question")
+    query = text("SELECT question_id, question_text, npti_axis, question_ratio FROM npti_question")
     result = db.execute(query).fetchall()
-    return [dict(row) for row in result]
+    return [dict(row._mapping) for row in result]
 
 
 @app.post("/test")

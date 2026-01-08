@@ -158,7 +158,7 @@ async function handleTestSubmit(e) {
         showModal(); // 완료 모달 표시
     } else {
         console.error("저장 실패:", result.message);
-        showErrorModal(result.message || `결과 저장 중 오류가 발생했습니다.
+        showErrorModal(`결과 저장 중 오류가 발생했습니다.
         다시 시도해주세요`);
         if (submitBtn) submitBtn.disabled = false;
     }
@@ -167,7 +167,7 @@ async function handleTestSubmit(e) {
 // 6. 이벤트 핸들러 및 모달 관리
 async function saveNPTIResult(payload) {
     try {
-        const response = await fetch('/npti/save', {
+        const response = await fetch('/test', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
