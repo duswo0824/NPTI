@@ -204,7 +204,8 @@ def classify_npti_fast():
                     }
                 )
                 continue
-        logger.info(f"NPTI 신규 기사 {count}건 분류 완료")
+        if count > 0:
+            logger.info(f"NPTI 신규 기사 {count}건 분류 완료")
 
     except Exception as e:
         logger.error(f"[news_NPTI.py] 기사 NPTI 전체 프로세스(joblib) 에러: {e}")
