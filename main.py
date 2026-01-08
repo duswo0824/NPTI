@@ -208,6 +208,33 @@ async def save_test_result(request: Request, payload: dict = Body(...), db: Sess
         db.rollback()
         return JSONResponse(status_code=500, content={"success": False, "message": str(e)})
 
+@app.get("/result")
+async def get_result_page():
+    return FileResponse("view/html/result.html")
+
+@app.post("/result")
+async def api_get_result_data(request: Request, db: Session = Depends(get_db)):
+    """결과 페이지에 필요한 모든 DB 데이터 통합 조회"""
+    user_id = request.session.get("user_id")
+    if not user_id:
+        return JSONResponse(status_code=401, content={"success": False})
+
+    # 유저 점수 조회
+    user_npti = get_user_npti(db, user_id)
+    if not user_npti:
+        return {"hasResult": False}
+
+    # 유형 상세 설명(닉네임 등) 및 차트 라벨 정보 조회
+    code_info = get_npti_code_by_code(db, user_npti['npti_code'])
+    all_types = get_all_npti_type(db)
+
+    return {
+        "hasResult": True,
+        "user_npti": user_npti,
+        "code_info": code_info,
+        "all_types": all_types
+    }
+
 @app.get("/search")
 def main():
     return FileResponse("view/html/search.html")
