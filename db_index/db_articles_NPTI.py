@@ -7,7 +7,7 @@ logger = Logger().get_logger(__name__)
 
 
 
-class ArticlesNPTITable(Base):
+class ArticlesNPTI(Base):
     __tablename__ = "articles_NPTI"  # ERD에 명시된 테이블 이름
 
     news_id = Column(String, primary_key=True, index=True)
