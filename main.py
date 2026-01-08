@@ -13,7 +13,7 @@ from database import get_db
 from db_index.db_npti_type import get_all_npti_type, get_npti_type_by_group, npti_type_response
 from db_index.db_npti_code import get_all_npti_codes, get_npti_code_by_code, npti_code_response
 from db_index.db_npti_question import get_all_npti_questions, get_npti_questions_by_axis, npti_question_response
-from db_index.db_user_info import UserCreateRequest, insert_user, authenticate_user
+from db_index.db_user_info import UserCreateRequest, insert_user, authenticate_user, get_my_page_data
 from db_index.db_user_npti import get_user_npti
 from sqlalchemy import text
 from starlette.middleware.sessions import SessionMiddleware
@@ -360,10 +360,6 @@ def login(req: dict, request: Request, db: Session = Depends(get_db)):
     # JSON만 반환 (페이지 이동 X)
     return {"success": True}
 
-    # 세션에 사용자 ID 저장
-    request.session["user_id"] = req.get("user_id")
-    return FileResponse("view/html/main.html")
-
 #로그인 상태를 확인
 @app.get("/auth/me")
 def auth_me(request: Request):
@@ -447,6 +443,21 @@ def get_about(db: Session = Depends(get_db)):
         "criteria": criteria,
         "guides": guides
     }
+
+# 마이페이지 프로필 조회 - (추가)
+@app.get("/users/me/profile")
+def read_my_profile(request: Request, db: Session = Depends(get_db)):
+    user_id = request.session.get("user_id")
+    if not user_id:
+        return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+
+    profile_data = get_my_page_data(db, user_id)
+
+    if not profile_data:
+        request.session.clear()
+        return JSONResponse(status_code=404, content={"detail": "User not found"})
+
+    return profile_data
 
 # NPTI 결과 조회
 @app.get("/users/me/npti")
