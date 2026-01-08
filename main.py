@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, Query, Request, Body
+from fastapi import FastAPI, Depends, Query, Request, Body, HTTPException
 from fastapi.responses import FileResponse
 from starlette.responses import JSONResponse, RedirectResponse
 from starlette.staticfiles import StaticFiles
@@ -23,6 +23,10 @@ from db_index.db_user_answers import insert_user_answers
 from db_index.db_user_npti import upsert_user_npti
 import json
 from elasticsearch_index.es_user_behavior import index_user_behavior
+from db_index.db_user_npti import UserNPTITable, UserNPTIResponse
+from db_index.db_articles_NPTI import ArticlesNPTITable
+from elasticsearch_index.es_raw import ES_INDEX
+
 
 app = FastAPI()
 logger = Logger().get_logger(__name__)
@@ -567,3 +571,106 @@ def read_my_npti(
         "hasResult": True,
         "data": result
     }
+
+
+@app.get("/user/npti/{user_id}")
+async def get_user_npti(user_id: str, db: Session = Depends(get_db)):
+    # 1. user_npti와 npti_code 테이블 조인 (기본 정보 및 별칭 조회)
+    result = db.query(
+        UserNPTITable,
+        npti_code_response.type_nick
+    ).join(
+        npti_code_response, UserNPTITable.npti_code == npti_code_response.npti_code
+    ).filter(
+        UserNPTITable.user_id == user_id
+    ).first()
+
+    if not result:
+        raise HTTPException(status_code=404, detail="NPTI data not found")
+
+    user_data, type_nick = result
+    npti_code_str = user_data.npti_code  # 예: 'STFN'
+
+    # 2. 각 알파벳에 매칭되는 NPTI_KOR 값 가져오기 (npti_type 테이블 조회)
+    # npti_type 테이블에서 NPTI_type 컬럼이 코드에 포함된 것들만 조회
+    chars = list(npti_code_str)
+    type_items = db.query(npti_type_response).filter(npti_type_response.NPTI_type.in_(chars)).all()
+
+    # 순서(S-T-F-N)에 맞게 딕셔너리로 맵핑 생성
+    kor_map = {item.NPTI_type: item.NPTI_KOR for item in type_items}
+
+    # 최종 리스트 생성 (예: ["짧은", "이야기형", "객관적", "비판적"])
+    npti_kor_list = [kor_map.get(c, "") for c in chars]
+
+    return {
+        "user_id": user_data.user_id,
+        "npti_code": npti_code_str,
+        "type_nick": type_nick,
+        "npti_kor_list": npti_kor_list,  # 프론트에서 사용할 한글 명칭 리스트
+        "updated_at": user_data.updated_at
+    }
+
+
+@app.get("/curated/news")
+async def get_curated_news(
+        npti: str = Query(...),
+        category: str = "all",
+        sort_type: str = "accuracy",
+        db: Session = Depends(get_db)
+):
+    # DB에서 해당 NPTI_code를 가진 news_id 리스트를 먼저 가져옴
+    news_ids = db.query(ArticlesNPTITable.news_id).filter(
+        ArticlesNPTITable.NPTI_code == npti
+    ).all()
+
+    id_list = [id[0] for id in news_ids]
+    if not id_list:
+        return {"articles": []}
+
+    # ES 쿼리 작성
+    body = {
+        "query": {
+            "bool": {
+                "must": [{"terms": {"news_id": id_list}}]
+            }
+        }
+    }
+
+    # 3. [핵심] 정렬 조건 처리
+    if sort_type == "latest":  # == 양옆에 공백 추가
+        # 최신순 정렬 로직
+        body["sort"] = [
+            {"pubdate": {"order": "desc"}},
+            {"pubtime": {"order": "desc"}}
+        ]
+    else:
+        # 정확도순 (디폴트)
+        body["sort"] = [{"_score": "desc"}]
+
+    if category != "all":
+        body["query"]["bool"]["filter"] = [{"term": {"category": category}}]
+
+    try:
+        # 들여쓰기를 정확히 4칸으로 통일
+        res = es.search(index=ES_INDEX, body=body)
+        hits = res["hits"]["hits"]
+
+        # 3. 기존 search_article의 데이터 가공 방식을 그대로 활용
+        articles = []
+        for hit in hits:
+            src = hit["_source"]
+            news_info = {
+                "id": src.get("news_id", ""),
+                "title": src.get("title", ""),
+                "summary": src.get("content", "")[:150] + "...",  # UI에 맞게 요약
+                "publisher": src.get("media", ""),
+                "date": src.get("pubdate", ""),
+                "thumbnail": src.get("img", ""),
+                "category": src.get("category", "")
+            }
+            articles.append(news_info)
+
+        return {"articles": articles}
+    except Exception as e:
+        logger.error(f"큐레이션 뉴스 검색 오류: {e}")
+        return {"articles": []}
