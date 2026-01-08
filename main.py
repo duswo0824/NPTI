@@ -627,7 +627,7 @@ async def get_curated_news(
 
     try:
         # 들여쓰기를 정확히 4칸으로 통일
-        res = es.search(index=ES_INDEX, body=body)
+        res = await es.search(index=ES_INDEX, body=body)
         hits = res["hits"]["hits"]
 
         # 3. 기존 search_article의 데이터 가공 방식을 그대로 활용
