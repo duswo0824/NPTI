@@ -2,6 +2,8 @@ from fastapi import FastAPI, Depends, Query, Request, Body, HTTPException
 from fastapi.responses import FileResponse
 from starlette.responses import JSONResponse, RedirectResponse
 from starlette.staticfiles import StaticFiles
+import pandas as pd
+from algorithm.user_NPTI import model_predict_proba
 from bigkinds_crawling.scheduler import sch_start
 from bigkinds_crawling.sample import sample_crawling, get_sample
 from logger import Logger
@@ -14,7 +16,7 @@ from db_index.db_npti_type import get_all_npti_type, get_npti_type_by_group, npt
 from db_index.db_npti_code import get_all_npti_codes, get_npti_code_by_code, npti_code_response
 from db_index.db_npti_question import get_all_npti_questions, get_npti_questions_by_axis, npti_question_response
 from db_index.db_user_info import UserCreateRequest, insert_user, authenticate_user, get_my_page_data
-from db_index.db_user_npti import get_user_npti
+from db_index.db_user_npti import get_user_npti_info
 from sqlalchemy import text
 from starlette.middleware.sessions import SessionMiddleware
 from elasticsearch import Elasticsearch, ConnectionError as ESConnectionError
@@ -22,10 +24,11 @@ from datetime import timedelta, datetime, timezone
 from db_index.db_user_answers import insert_user_answers
 from db_index.db_user_npti import insert_user_npti
 import json
-from elasticsearch_index.es_user_behavior import index_user_behavior
+from elasticsearch_index.es_user_behavior import index_user_behavior, search_user_behavior
 from db_index.db_user_npti import UserNPTITable, UserNPTIResponse
-from elasticsearch_index.es_raw import ES_INDEX
+from elasticsearch_index.es_raw import ES_INDEX, search_news_condition
 from db_index.db_articles_NPTI import ArticlesNPTI
+import math
 
 
 app = FastAPI()
@@ -244,7 +247,7 @@ async def save_test_result(request: Request, payload: dict = Body(...), db: Sess
             "npti_code": payload.get("npti_result"),
             "length_score": scores.get('length'),
             "article_score": scores.get('article'),
-            "info_score": scores.get('info'),
+            "information_score": scores.get('info') or scores.get('information') or 0,
             "view_score": scores.get('view')
         }
         insert_user_npti(db, npti_params)
@@ -268,7 +271,7 @@ async def api_get_result_data(request: Request, db: Session = Depends(get_db)):
         return JSONResponse(status_code=401, content={"success": False})
 
     # 유저 점수 조회
-    user_npti = get_user_npti(db, user_id)
+    user_npti = get_user_npti_info(db, user_id)
     if not user_npti:
         return {"hasResult": False}
 
@@ -442,7 +445,7 @@ def login(req: dict, request: Request, db: Session = Depends(get_db)):
         return {"success": False, "message": "ID 또는 비밀번호가 틀립니다."}
 
     # 2. DB에서 데이터 가져오기
-    raw_data = get_user_npti(db, user_id)
+    raw_data = get_user_npti_info(db, user_id)
 
     # 3. 세션 저장
     request.session["user_id"] = user_id
@@ -653,3 +656,29 @@ async def get_curated_news(
     except Exception as e:
         logger.error(f"큐레이션 뉴스 검색 오류: {e}")
         return {"articles": []}
+
+@app.get("/update_user_npti")
+def update_user_npti(request: Request, db: Session = Depends(get_db)):
+    user_id = request.session.get("user_id")
+    # user_id가 세션에 없는 경우 추가해야함
+    latest_user_npti = get_user_npti_info(db, user_id)
+    latest_update_time = latest_user_npti.get('timestamp')
+    behavior_log_per_news = search_user_behavior(user_id, latest_update_time) # [[{},{}],[{},{},{},],[{}]] 형태
+    for behavior_log in behavior_log_per_news: # [{},{}]
+        if not behavior_log:
+            continue
+        result = model_predict_proba(behavior_log)# {userid:, news_id:, dwell time:, final_read_time:, reading_efficiency: } 같은 dictionary
+        reading_efficiency = result.get('reading_efficiency')
+        news_id = result.get('news_id')
+        body = {"query": {"term": {"news_id": "검색할_news_id"}},"_source": ["content"],"script_fields": {"word_count": {"script": {"lang": "painless",
+        "source": """if (params['_source']['content'] != null && params['_source']['content'].trim().length() > 0) {
+            return params['_source']['content'].trim().splitOnTokenizePattern(/\\s+/).length;}return 0;"""}}}}
+        response = search_news_condition(body)
+        if response and response['hits']['hits']:
+            n_word = response['hits']['hits'][0]['fields']['word_count'][0]
+        interest_score = min(1, reading_efficiency * (math.log(n_word+1) / math.log(500+1)))
+        user_npti = get_user_npti_info(db, user_id)
+        news_npti = None # ------------------------------------------------------- 성은님 질문?????
+        # user_npti 점수에 interest_score 반영하는 로직 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! (까먹으면 안됨)
+    return None
+
