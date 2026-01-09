@@ -50,7 +50,7 @@ app.add_middleware(
     SessionMiddleware,
     secret_key="npti-secret-key",
     # max_age=60 * 60 * 24, #1일
-    max_age=int(timedelta(minutes=5).total_seconds()),
+    max_age=int(timedelta(minutes=60).total_seconds()),
     same_site="lax"         # 기본 보안 옵션
 )
 
@@ -242,7 +242,7 @@ async def get_result_page():
 def api_get_result_data(request: Request, db: Session = Depends(get_db)):
     try:
         user_id = request.session.get("user_id")
-        user_name = request.session.get("user_name", "독자")
+        # user_name = request.session.get("user_name", "독자")
 
         if not user_id:
             return {"isLoggedIn": False, "hasNPTI": False}
@@ -251,7 +251,7 @@ def api_get_result_data(request: Request, db: Session = Depends(get_db)):
         user_data = get_user_npti_info(db, user_id)
 
         if not user_data:
-            return {"isLoggedIn": True, "hasNPTI": False, "user_name": user_name}
+            return {"isLoggedIn": True, "hasNPTI": False, "user_id": user_id}
 
         # 2. 날짜 직렬화 (JSON 에러 방지 핵심)
         if user_data.get('updated_at') and isinstance(user_data['updated_at'], datetime):
@@ -261,7 +261,8 @@ def api_get_result_data(request: Request, db: Session = Depends(get_db)):
         return {
             "isLoggedIn": True,
             "hasNPTI": True,
-            "user_name": user_name,
+            "user_id": user_id,
+            # "user_name": user_name,
             "user_npti": user_data,
             "code_info": get_npti_code_by_code(db, user_data['npti_code']), # 여기서 에러 해결됨
             "all_types": get_all_npti_type(db) # 여기서도 info_type AS information_type 적용 필요
@@ -596,8 +597,13 @@ async def get_curated_news(
         npti: str = Query(...),
         category: str = "all",
         sort_type: str = "accuracy",
+        page: int = 1,
         db: Session = Depends(get_db)
 ):
+
+    ITEMS_PER_PAGE = 10
+    offset = (page - 1) * ITEMS_PER_PAGE
+
     # DB에서 해당 NPTI_code를 가진 news_id 리스트를 먼저 가져옴
     news_ids = db.query(ArticlesNPTI.news_id).filter(
         ArticlesNPTI.NPTI_code == npti
@@ -605,10 +611,13 @@ async def get_curated_news(
 
     id_list = [id[0] for id in news_ids]
     if not id_list:
-        return {"articles": []}
+        return {"articles": [], "total": 0}
 
     # ES 쿼리 작성
     body = {
+        "track_total_hits": True,
+        "from": offset,
+        "size": ITEMS_PER_PAGE,
         "query": {
             "bool": {
                 "must": [{"terms": {"news_id": id_list}}]
@@ -616,19 +625,16 @@ async def get_curated_news(
         }
     }
 
-    # 3. 정렬 조건 처리
-    if sort_type == "latest":  # == 양옆에 공백 추가
-        # 최신순 정렬 로직
-        body["sort"] = [
-            {"pubdate": {"order": "desc"}},
-            #{"pubtime": {"order": "desc"}}
-        ]
-    else:
-        # 정확도순 (디폴트)
-        body["sort"] = [{"_score": {"order": "desc"}}]
-
     if category != "all":
-        body["query"]["bool"]["filter"] = [{"term": {"category": category}}]
+        body["query"]["bool"]["filter"] = [
+            {"term": {"category": category}}
+        ]
+
+    # 3. 정렬 조건 처리
+    if sort_type == "latest":
+        body["sort"] = [{"pubdate": {"order": "desc"}}]
+    else:
+        body["sort"] = [{"_score": {"order": "desc"}}]
 
     try:
         res = es.search(index=ES_INDEX, body=body)
@@ -638,21 +644,24 @@ async def get_curated_news(
         articles = []
         for hit in hits:
             src = hit["_source"]
-            news_info = {
+            articles.append({
                 "id": src.get("news_id", ""),
                 "title": src.get("title", ""),
-                "summary": src.get("content", "")[:150] + "...",  # UI에 맞게 요약
+                "summary": src.get("content", "")[:150] + "...",
                 "publisher": src.get("media", ""),
                 "date": src.get("pubdate", ""),
                 "thumbnail": src.get("img", ""),
                 "category": src.get("category", "")
-            }
-            articles.append(news_info)
+            })
 
-        return {"articles": articles}
+        total_count = res["hits"]["total"]["value"]
+        return {
+            "articles": articles,
+            "total": total_count
+        }
     except Exception as e:
         logger.error(f"큐레이션 뉴스 검색 오류: {e}")
-        return {"articles": []}
+        return {"articles": [], "total": 0}
 
 @app.get("/update_user_npti")
 def update_user_npti(request: Request, db: Session = Depends(get_db)):

@@ -1,6 +1,5 @@
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from Naver.naver_crawling import crawling_general_news, crawling_sports_news, crawler_naver, run_fast_crawl, \
-    run_slow_crawl
+from Naver.naver_crawling import  run_fast_crawl, run_slow_crawl
 from algorithm.news_NPTI import classify_npti_fast, init_npti
 from bigkinds_crawling.news_raw import news_crawling
 from bigkinds_crawling.news_aggr_grouping import news_aggr
