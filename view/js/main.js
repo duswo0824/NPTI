@@ -20,10 +20,10 @@ const OPPOSITE_MAP = { S: 'L', L: 'S', T: 'C', C: 'T', F: 'I', I: 'F', N: 'P', P
 const PAIRS = [['L', 'S'], ['C', 'T'], ['I', 'F'], ['P', 'N']];
 
 const TYPE_DB = {
-    L: { text: '긴', color: 'blue' }, S: { text: '짧은', color: 'orange' },
-    C: { text: '텍스트형', color: 'blue' }, T: { text: '이야기형', color: 'orange' },
-    I: { text: '분석적', color: 'blue' }, F: { text: '객관적', color: 'orange' },
-    P: { text: '우호적', color: 'blue' }, N: { text: '비판적', color: 'orange' }
+    L: { text: '긴 기사', color: 'blue' }, S: { text: '짧은 기사', color: 'orange' },
+    C: { text: '텍스트 중심 기사', color: 'blue' }, T: { text: '이야기형 기사', color: 'orange' },
+    I: { text: '분석 기사', color: 'blue' }, F: { text: '객관적 기사', color: 'orange' },
+    P: { text: '우호적 기사', color: 'blue' }, N: { text: '비판적 기사', color: 'orange' }
 };
 
 // [상태 관리]
@@ -148,7 +148,7 @@ function getNewsData(category) {
 /* Ticker : ES 데이터 기반 속보 추출 및 애니메이션 */
 async function initTicker() {
     const list = document.getElementById('ticker-list');
-    const tickerSection = document.querySelector('.ticker-section'); // 래퍼 요소
+    const tickerSection = document.querySelector('.breaking-news'); // 래퍼 요소
     if (!list) return;
 
     try {
