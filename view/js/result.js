@@ -1,6 +1,7 @@
 // 1. 전역 상수 및 상태 변수
 const EL = {
-    userName: () => document.getElementById('userName'),
+    // userName: () => document.getElementById('userName'),
+    userId: () => document.getElementById('userId'),
     nptiCode: () => document.getElementById('nptiCode'),
     nptiName: () => document.getElementById('nptiName'),
     resultSummary: () => document.getElementById('resultSummary'),
@@ -89,10 +90,11 @@ async function initResultPage() {
 - 데이터를 화면에 뿌려주는 로직을 별도로 분리
 */
 function renderResultToUI(res) {
-    const { user_npti, code_info, all_types, user_name } = res;
+    const { user_npti, code_info, all_types, user_id, user_name } = res;
 
     // A. 텍스트 정보 삽입 (db_npti_code 데이터 연결)
-    if (EL.userName()) EL.userName().textContent = user_name || "독자";
+    // if (EL.userName()) EL.userName().textContent = user_name || "독자";
+    if (EL.userId()) EL.userId().textContent = user_id;
     if (EL.nptiCode()) EL.nptiCode().textContent = user_npti.npti_code;
     if (EL.nptiName()) EL.nptiName().textContent = code_info.type_nick;
 
