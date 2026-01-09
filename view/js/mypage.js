@@ -1,33 +1,36 @@
 document.addEventListener('DOMContentLoaded', async () => {
 
     /* =================================================================
-       1. [서버 연동] 실제 유저 정보 및 NPTI 데이터 가져오기
+       1. [서버 연동] 세션 및 NPTI 데이터 가져오기 (경로 수정)
     ================================================================= */
     let userData = null;
     let nptiData = null;
 
     try {
-        // 병렬로 API 호출 (프로필 + NPTI 결과)
-        const [profileRes, nptiRes] = await Promise.all([
-            fetch('/users/me/profile'),
-            fetch('/users/me/npti')
-        ]);
+        // 1-1. 상세 프로필 정보 가져오기 (main.py의 /users/me/profile 호출)
+        const profileRes = await fetch('/users/me/profile');
 
-        // 1-1. 비로그인 접근 차단 (보안)
         if (profileRes.status === 401) {
-            // alert("로그인이 필요한 서비스입니다."); #팝업이 뜨고 로그인으로 보낼지 그냥 알림없이 바로 보낼지
             window.location.replace("/login");
             return;
         }
 
-        // 1-2. 데이터 파싱
         if (profileRes.ok) {
             userData = await profileRes.json();
         }
 
-        const nptiResponse = await nptiRes.json();
-        if (nptiResponse.hasResult) {
-            nptiData = nptiResponse.data;
+        // 1-2. NPTI 결과 정보 가져오기 (main.py의 /result POST 호출)
+        const resultRes = await fetch('/result', { method: 'POST' });
+        const resultData = await resultRes.json();
+
+        if (resultData.hasNPTI || resultData.hasResult) {
+            nptiData = {
+                ...resultData.user_npti,
+                type_nick: resultData.code_info.type_nick || resultData.code_info.information_type,
+                type_de: resultData.code_info.type_de,
+                // [중요] 서버의 information_score를 차트용 info_score로 매핑
+                info_score: resultData.user_npti.information_score
+            };
         }
 
     } catch (error) {
@@ -68,36 +71,41 @@ document.addEventListener('DOMContentLoaded', async () => {
        3. 데이터 바인딩 (서버 데이터 -> 화면 표시)
     ================================================================= */
 
-    // 헬퍼 함수: input은 value, 그 외는 innerText
-    const setVal = (el, val) => {
-        if (el) (el.tagName === 'INPUT' ? el.value = val : el.innerText = val);
+    // 헬퍼 함수: 입력창(input)에 값을 채움
+    const setInputVal = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.value = val || "";
     };
 
-    // 3-1. 유저 프로필 바인딩
+    // 3-1. 유저 프로필 바인딩(main.py에서 정한 Key값 사용)
     if (userData) {
-        setVal(els.displayId, `@${userData.userId}`);
-        setVal(els.dbName, userData.name);
-        setVal(els.dbEmail, userData.email);
-        setVal(els.dbBirth, userData.birth);
-        setVal(els.dbAge, userData.age);
-        setVal(els.dbGender, userData.gender);
+        const displayId = document.getElementById('displayId');
+        if (displayId) displayId.innerText = `@${userData.userId}`;
+
+        setInputVal('dbName', userData.name);
+        setInputVal('dbEmail', userData.email);
+        setInputVal('dbBirth', userData.birth);
+        setInputVal('dbAge', userData.age);
+        setInputVal('dbGender', userData.gender);
     }
 
     // 3-2. NPTI 결과 바인딩 (조건부 렌더링)
-    if (nptiData) {
-        // 결과가 있으면 섹션 보이기
-        if (els.nptiResultSection) els.nptiResultSection.style.display = 'block';
+   if (nptiData) {
+        const resSection = document.getElementById('nptiResultSection');
+        if (resSection) resSection.style.display = 'block';
 
-        if (els.resUserName) els.resUserName.innerText = userData.name;
-        if (els.nptiCode) els.nptiCode.innerText = nptiData.npti_code; // DB 컬럼명 확인
-        if (els.nptiName) els.nptiName.innerText = `"${nptiData.type_nick || '분석된 유형'}"`;
-        if (els.resultSummary) els.resultSummary.innerHTML = nptiData.type_de || '';
+        if (document.getElementById('nptiCode'))
+            document.getElementById('nptiCode').innerText = nptiData.npti_code;
+        if (document.getElementById('nptiName'))
+            document.getElementById('nptiName').innerText = `"${nptiData.type_nick}"`;
+        if (document.getElementById('resultSummary'))
+            document.getElementById('resultSummary').innerHTML = nptiData.type_de;
 
         // 차트 렌더링 (DB 점수 활용)
         // DB에는 한쪽 점수만 있으므로 반대쪽은 100에서 뺌
         renderChart('barLength', nptiData.length_score, 100 - nptiData.length_score, 'S', 'L', 'track-Length');
         renderChart('barArticle', nptiData.article_score, 100 - nptiData.article_score, 'C', 'T', 'track-Article');
-        renderChart('barInfo', nptiData.info_score, 100 - nptiData.info_score, 'F', 'I', 'track-Info');
+        renderChart('barInfo', nptiData.information_score, 100 - nptiData.information_score, 'F', 'I', 'track-Info');
         renderChart('barView', nptiData.view_score, 100 - nptiData.view_score, 'P', 'N', 'track-View');
 
     } else {
@@ -261,21 +269,26 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (els.closeWithdraw) els.closeWithdraw.onclick = () => toggleWithdrawModal(false);
 
-    // [서버 연동] 회원 탈퇴(로그아웃) 처리
-    if (els.confirmWithdraw) {
-        els.confirmWithdraw.onclick = async () => {
-            try {
-                // 단순 로컬스토리지 삭제가 아니라 서버에 로그아웃 요청
-                await fetch('/logout', { method: 'POST' });
+    // [수정된 회원 탈퇴 로직]
+if (els.confirmWithdraw) {
+    els.confirmWithdraw.onclick = async () => {
+        try {
+            // 2. 로그아웃이 아닌 '탈퇴(비활성화)' API 호출
+            const res = await fetch('/users/withdraw', { method: 'POST' });
 
-                alert("로그아웃 되었습니다.");
-                window.location.href = "/view/html/main.html";
-            } catch (e) {
-                console.error("로그아웃 실패", e);
-                window.location.href = "/view/html/main.html";
+            if (res.ok) {
+                const data = await res.json();
+                if (data.success) {
+                    window.location.href = "/view/html/main.html";
+                }
+            } else {
+                alert("탈퇴 처리 중 오류가 발생했습니다.");
             }
-        };
-    }
+        } catch (e) {
+            console.error("탈퇴 요청 실패:", e);
+        }
+    };
+}
 
     // 외부 클릭 시 메뉴 닫기
     document.addEventListener('click', () => {
