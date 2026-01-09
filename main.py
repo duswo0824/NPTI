@@ -542,39 +542,51 @@ async def mypage(req: Request, db: Session = Depends(get_db)):
     pass # 실직적으로 처리하는 곳
 
 
-@app.get("/user/npti/{user_id}")
-async def get_user_npti(user_id: str, db: Session = Depends(get_db)):
-    # 1. user_npti와 npti_code 테이블 조인 (기본 정보 및 별칭 조회)
+@app.get("/curation", response_class=HTMLResponse)
+def curation_page():
+    with open("view/html/curation.html", encoding="utf-8") as f:
+        return f.read()
+
+@app.get("/user/npti/me")
+async def get_user_npti(request: Request,db: Session = Depends(get_db)):
+    user_id = request.session.get("user_id")
+
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    # user_npti와 npti_code 테이블 조인 (기본 정보 및 별칭 조회)
     result = db.query(
         UserNPTITable,
-        npti_code_response.type_nick
+        NptiCodeTable.type_nick
     ).join(
-        npti_code_response, UserNPTITable.npti_code == npti_code_response.npti_code
+        NptiCodeTable, UserNPTITable.npti_code == NptiCodeTable.npti_code
     ).filter(
         UserNPTITable.user_id == user_id
     ).first()
 
+    # 유저는 있으나 NPTI 없음 → 404
     if not result:
         raise HTTPException(status_code=404, detail="NPTI data not found")
-    user_data, type_nick = result
-    npti_code_str = user_data.npti_code  # 예: 'STFN'
 
-    # 2. 각 알파벳에 매칭되는 npti_kor 값 가져오기 (npti_type 테이블 조회)
+    user_data, type_nick = result
+    npti_code_str = user_data.npti_code
+
+    # 각 알파벳에 매칭되는 npti_kor 값 가져오기 (npti_type 테이블 조회)
     # npti_type 테이블에서 NPTI_type 컬럼이 코드에 포함된 것들만 조회
     chars = list(npti_code_str)
-    type_items = db.query(npti_type_response).filter(npti_type_response.NPTI_type.in_(chars)).all()
+    type_items = db.query(NptiTypeTable) \
+        .filter(NptiTypeTable.NPTI_type.in_(chars)) \
+        .all()
 
     # 순서(S-T-F-N)에 맞게 딕셔너리로 맵핑 생성
     kor_map = {item.NPTI_type: item.npti_kor for item in type_items}
-
     # 최종 리스트 생성 (예: ["짧은", "이야기형", "객관적", "비판적"])
     npti_kor_list = [kor_map.get(c, "") for c in chars]
 
     return {
-        "user_id": user_data.user_id,
         "npti_code": npti_code_str,
         "type_nick": type_nick,
-        "npti_kor_list": npti_kor_list,  # 프론트에서 사용할 한글 명칭 리스트
+        "npti_kor_list": npti_kor_list,
         "updated_at": user_data.updated_at
     }
 
