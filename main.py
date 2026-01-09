@@ -18,7 +18,7 @@ from db_index.db_user_npti import get_user_npti
 from sqlalchemy import text
 from starlette.middleware.sessions import SessionMiddleware
 from elasticsearch import Elasticsearch, ConnectionError as ESConnectionError
-from datetime import timedelta
+from datetime import timedelta, datetime, timezone
 from db_index.db_user_answers import insert_user_answers
 from db_index.db_user_npti import insert_user_npti
 import json
@@ -113,6 +113,7 @@ async def collect_behavior_log(request: Request):
         user_id = data.get("user_id")
         log_count = data.get("total_logs")
         raw_logs = data.get("logs", [])
+        stored_time = datetime.now(timezone(timedelta(hours=9))).isoformat(timespec='seconds')
 
         processed_docs = []
         for log in raw_logs:
@@ -126,15 +127,18 @@ async def collect_behavior_log(request: Request):
                 "mouseX": log.get("mouseX", 0.0),
                 "mouseY": log.get("mouseY", 0.0),
                 "timestamp": int(log.get("elapsedMs", 0)),
-                "baseline": log.get("baseline", 0.0)
+                "baseline": log.get("baseline", 0.0),
+                "stored_time": stored_time
             }
             processed_docs.append(doc)
 
-        # 4. [저장] ES 인덱싱 함수 호출
-        count = index_user_behavior(processed_docs)
-
-        print(f"[수신 성공] User: {user_id} | News: {news_id} | Logs: {log_count}개 | ES 저장: {count}건")
-        return {"status": "ok", "message": f"Saved {count} logs"}
+        # 4. [저장] ES 인덱싱
+        if processed_docs:
+            count = index_user_behavior(processed_docs)
+            print(f"[Log] User:{user_id} | News:{news_id} | {count} 개 데이터 저장 완료")
+            return {"status": "ok", "message": f"{count}개 로그 저장"}
+        else:
+            return {"status": "ok", "message": "저장할 로그 없음"}
 
     except Exception as e:
         print(f"[에러 발생] {e}")
