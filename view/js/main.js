@@ -153,12 +153,12 @@ async function initTicker() {
 
     try {
         // 1. 서버에서 분석된 속보 데이터 가져오기
-        const response = await fetch('/news/ticker');
+        const response = await fetch('/render_breaking');
         const result = await response.json();
-        const breakingNewsData = result.data || [];
+        const id_title_list = result.breaking_news || [];
 
         // 2. 0건일 경우 영역 숨기기
-        if (breakingNewsData.length === 0) {
+        if (id_title_list.length === 0) {
             if (tickerSection) tickerSection.style.display = 'none';
             return;
         } else {
@@ -167,16 +167,16 @@ async function initTicker() {
 
         // 3. UI 렌더링
         list.innerHTML = '';
-        breakingNewsData.forEach(item => {
+        id_title_list.forEach(item => {
             const li = document.createElement('li');
             li.className = 'ticker-item';
             // ES 데이터 필드명에 맞춰 수정 (title, _id 등)
-            li.innerHTML = `<a href="/article?id=${item._id}" class="ticker-link">${item.title}</a>`;
+            li.innerHTML = `<a href="/article?news_id=${item.id}" class="ticker-link">${item.title}</a>`;
             list.appendChild(li);
         });
 
         // 4. 무한 루프를 위한 첫 번째 요소 복제
-        if (breakingNewsData.length > 0) {
+        if (id_title_list.length > 1) {
             list.appendChild(list.firstElementChild.cloneNode(true));
         }
 
@@ -192,7 +192,7 @@ async function initTicker() {
             list.style.transition = 'transform 1s ease';
             list.style.transform = `translateY(-${currentIndex * itemHeight}px)`;
 
-            if (currentIndex === breakingNewsData.length) {
+            if (currentIndex === id_title_list.length) {
                 setTimeout(() => {
                     list.style.transition = 'none';
                     currentIndex = 0;
