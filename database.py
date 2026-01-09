@@ -44,5 +44,6 @@ def get_db() -> Session:
         yield db
     except Exception as e:
         logger.error(f"DB 연결 실패 : {e}")
+        raise
     finally:
         db.close()
