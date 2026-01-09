@@ -126,6 +126,7 @@ function renderQuestionCards(questions) {
 /* 5. NPTI 개인화 로직 섹션 */
 async function handleTestSubmit(e) {
     e.preventDefault(); // 기본 제출 동작 막기
+    console.log("=== 제출 프로세스 시작 (최신 버전) ==="); // 이 문구가 콘솔에 떠야 합니다.
 
     // 제출 버튼 비활성화 (여러 번 클릭 방지)
     const submitBtn = e.target.querySelector('button[type="submit"]');
@@ -134,28 +135,43 @@ async function handleTestSubmit(e) {
     const formData = new FormData(EL.nptiForm());
 
     let answers = {}; // 개별 문항 점수 (db_user_answers용)
-    let finalScores = { length: 0, article: 0, info: 0, view: 0 }; // 합산 점수 (user_npti용)
+    let finalScores = { length: 0, article: 0, information: 0, view: 0 }; // 합산 점수 (user_npti용)
 
     // 데이터 수집 및 계산 로직
     for (let [qId, value] of formData.entries()) {
         const score = parseInt(value);
-        answers[qId] = score; // 개별 답변 수집 (db_user_answers용)
+        answers[qId] = score;
 
         const input = document.querySelector(`input[name="${qId}"]:checked`);
+        if (!input) continue;
+
         const axis = input.dataset.axis;
-        const ratio = parseFloat(input.dataset.ratio);
+        const ratio = parseFloat(input.dataset.ratio) || 0; // 가중치가 없으면 0 처리
 
         // 정규화 (0, 0.25, 0.5, 0.75, 1) 적용
         const normalized = (score - 1) / 4;
-        finalScores[axis] += normalized * ratio;
+
+        const targetAxis = (axis === 'info') ? 'information' : axis;
+
+        if (finalScores.hasOwnProperty(targetAxis)) {
+            finalScores[targetAxis] += (normalized * ratio);
+        }
     }
+    
+    // 100분율 변환 및 반올림 (DB가 INT이므로 정수로 변환)
+    Object.keys(finalScores).forEach(key => {
+        // 0.75 * 100 = 75 (정수형태로 만듦)
+        finalScores[key] = Math.round(finalScores[key] * 100);
+    });
+
+    console.log("서버로 전송할 100분율 점수:", finalScores);
 
     // 최종 NPTI 타입 결정 4글자 코드 생성
     const type = [
-        finalScores.length > 0.5 ? 'S' : 'L',
-        finalScores.article > 0.5 ? 'T' : 'C',
-        finalScores.info > 0.5 ? 'F' : 'I',
-        finalScores.view > 0.5 ? 'N' : 'P'
+        finalScores.length > 50 ? 'S' : 'L',
+        finalScores.article > 50 ? 'T' : 'C',
+        finalScores.information > 50 ? 'F' : 'I',
+        finalScores.view > 50 ? 'N' : 'P'
     ].join('');
 
     // 백엔드 /npti/save 호출
@@ -168,10 +184,10 @@ async function handleTestSubmit(e) {
     // 저장 요청
     const result = await saveNPTIResult(payload);
     if (result.success) {
-        console.log("저장 성공");
+        console.log("DB 저장 성공");
         showModal(); // 완료 모달 표시
     } else {
-        console.error("저장 실패:", result.message);
+        console.error("저장 에러:", result.message);
         showErrorModal(`결과 저장 중 오류가 발생했습니다.
         다시 시도해주세요`);
         if (submitBtn) submitBtn.disabled = false;
