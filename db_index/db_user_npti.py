@@ -47,12 +47,12 @@ def get_user_npti_info(db: Session, user_id: str):
         LIMIT 1
     """)
 
-    result = db.execute(sql, {"user_id": user_id}).mappings().first()
+    result = db.execute(sql, {"user_id": user_id}).first()
 
     if result:
         logger.info(f"user_npti 조회 성공 (최신본): {user_id}")
         # ✅ 핵심 수정: RowMapping 객체를 dict로 변환하여 리턴합니다.
-        return dict(result)
+        return dict(result._asdict())
     else:
         logger.info(f"user_npti 결과 없음: {user_id}")
         return None
