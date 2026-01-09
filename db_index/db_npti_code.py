@@ -33,7 +33,7 @@ def get_all_npti_codes(db: Session):
             npti_code,
             length_type,
             article_type,
-            information_type,
+            info_type AS information_type,
             view_type,
             type_nick,
             type_de
@@ -51,7 +51,7 @@ def get_npti_code_by_code(db: Session, code: str):
             npti_code,
             length_type,
             article_type,
-            information_type,
+            info_type AS information_type,
             view_type,
             type_nick,
             type_de
