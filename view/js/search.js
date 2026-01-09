@@ -144,7 +144,7 @@ async function executeSearch(page = 1) {
             const source = item._source;
 
             return `
-                <a href="${CONFIG.BASE_VIEW_URL}?id=${item._id}" class="result-item">
+                <a href="${CONFIG.BASE_VIEW_URL}?news_id=${item._id}" class="result-item">
                     <div class="result-info">
                         <div class="result-meta" style="margin-bottom: 8px; font-size: 13px; color: #888;">
                             <span class="media-tag" style="color: #ff6b00; font-weight: 600;">${source.media || '언론사'}</span>
