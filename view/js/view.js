@@ -3,6 +3,7 @@ let behaviorLogs = [];
 let currentNewsId = null;
 let tracker = null; // tracker 제어용 객체
 let viewerId = "guest";
+let hasNPTI = false;
 
 document.addEventListener('DOMContentLoaded', async function () {
     const params = new URLSearchParams(window.location.search);
@@ -18,7 +19,8 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     if (sessionData && sessionData.isLoggedIn && sessionData.user_id) {
         viewerId = sessionData.user_id;
-        console.log(`[View] 사용자 인증 완료: ${viewerId}`);
+        hasNPTI = sessionData.hasNPTI;
+        console.log(`[View] 사용자 인증 완료: ${viewerId} - 진단 여부: ${hasNPTI}`);
     } else {
         console.log(`[View] 비로그인(Guest) 접속`);
     }
@@ -29,6 +31,34 @@ document.addEventListener('DOMContentLoaded', async function () {
     } else {
         alert("잘못된 접근입니다.");
     }
+
+    // 로그아웃 확인 버튼 이벤트
+    const logoutBtn = document.getElementById('confirmLogout');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', async () => {
+            try {
+                // 1. 로그아웃 전, 수집된 행동 데이터가 있다면 마지막으로 전송
+                if (typeof sendDataToServer === 'function') {
+                    sendDataToServer();
+                }
+
+                // 2. 서버 로그아웃 처리
+                const response = await fetch('/logout', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (response.ok) {
+                    // 3. 성공 시 메인으로 이동 (뒤로가기 방지를 위해 replace 사용 권장)
+                    location.replace("/");
+                }
+            } catch (error) {
+                console.error('Logout failed:', error);
+                location.replace("/"); // 에러가 나더라도 세션 만료를 위해 메인으로 이동
+            }
+        });
+    }
+
 });
 
 // 페이지 이탈(닫기, 새로고침, 뒤로가기) 시 데이터 전송
@@ -49,7 +79,7 @@ function loadArticleData(news_id, viewerId){
             renderArticle(data);
 
             // [수정됨] 기사 로딩이 끝나면 행동 수집 시작!
-            if (!tracker && viewerId != 'guest') {
+            if (!tracker && viewerId != 'guest' && hasNPTI) {
                 tracker = userBehavior(news_id, 100); // 0.1초 간격 수집
             }
 
@@ -114,7 +144,6 @@ function initRelatedNews(related_news) {
     });
 }
 
-let behaviorLogs = [];
 
 function sendDataToServer() {
     // 1. 보낼 데이터가 없으면 중단
