@@ -30,6 +30,8 @@ from db_index.db_user_npti import UserNPTITable, UserNPTIResponse
 from elasticsearch_index.es_raw import ES_INDEX, search_news_condition
 from db_index.db_articles_NPTI import ArticlesNPTI
 import math
+from datetime import datetime
+from fastapi.responses import JSONResponse
 
 
 app = FastAPI()
@@ -228,27 +230,37 @@ async def get_result_page():
     return FileResponse("view/html/result.html")
 
 @app.post("/result")
-async def api_get_result_data(request: Request, db: Session = Depends(get_db)):
-    """결과 페이지에 필요한 모든 DB 데이터 통합 조회"""
-    user_id = request.session.get("user_id")
-    if not user_id:
-        return JSONResponse(status_code=401, content={"success": False})
+def api_get_result_data(request: Request, db: Session = Depends(get_db)):
+    try:
+        user_id = request.session.get("user_id")
+        user_name = request.session.get("user_name", "독자")
 
-    # 유저 점수 조회
-    user_npti = get_user_npti_info(db, user_id)
-    if not user_npti:
-        return {"hasResult": False}
+        if not user_id:
+            return {"isLoggedIn": False, "hasNPTI": False}
 
-    # 유형 상세 설명(닉네임 등) 및 차트 라벨 정보 조회
-    code_info = get_npti_code_by_code(db, user_npti['npti_code'])
-    all_types = get_all_npti_type(db)
+        # 1. 최신 데이터 조회 (일반 함수 호출)
+        user_data = get_user_npti_info(db, user_id)
 
-    return {
-        "hasResult": True,
-        "user_npti": user_npti,
-        "code_info": code_info,
-        "all_types": all_types
-    }
+        if not user_data:
+            return {"isLoggedIn": True, "hasNPTI": False, "user_name": user_name}
+
+        # 2. 날짜 직렬화 (JSON 에러 방지 핵심)
+        if user_data.get('updated_at') and isinstance(user_data['updated_at'], datetime):
+            user_data['updated_at'] = user_data['updated_at'].strftime('%Y-%m-%d %H:%M:%S')
+
+        # 3. 통합 데이터 반환 (컬럼명 이슈 해결을 위해 별칭을 사용하는 함수들)
+        return {
+            "isLoggedIn": True,
+            "hasNPTI": True,
+            "user_name": user_name,
+            "user_npti": user_data,
+            "code_info": get_npti_code_by_code(db, user_data['npti_code']), # 여기서 에러 해결됨
+            "all_types": get_all_npti_type(db) # 여기서도 info_type AS information_type 적용 필요
+        }
+    except Exception as e:
+        print(f"서버 에러 상세: {str(e)}")
+        return JSONResponse(status_code=500, content={"message": str(e)})
+
 
 @app.get("/search")
 def main():
