@@ -151,25 +151,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     function renderPagination(totalItems, currentPage) {
         const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
         
-        // 기존 페이지네이션 UI 제거 후 새로 생성
-        const existingPagination = document.querySelector('.pagination');
-        if (existingPagination) existingPagination.remove();
-
+        // 기존 pagination 전부 제거
+        document.querySelectorAll('.pagination').forEach(p => p.remove());
         if (totalPages <= 1) return; // 1페이지뿐이면 생성 안 함
 
         const paginationDiv = document.createElement('div');
         paginationDiv.className = 'pagination';
 
         // 공통 버튼 생성기
-        const createBtn = (text, targetPage, isDisabled, className = '') => {
+        const createBtn = (text, targetPage, disabled) => {
             const btn = document.createElement('button');
             btn.innerHTML = text;
-            btn.disabled = isDisabled;
-            if (className) btn.className = className;
+            btn.disabled = disabled;
+
+            btn.className = 'page-num' + (targetPage === currentPage ? ' active' : '');
+
             btn.onclick = () => {
-                window.scrollTo({ top: 0, behavior: 'smooth' }); // 상단 이동
                 loadCurationNews(currentCategory, targetPage);
             };
+
             return btn;
         };
 
@@ -177,10 +177,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         paginationDiv.appendChild(createBtn('《', 1, currentPage === 1));
         paginationDiv.appendChild(createBtn('〈', currentPage - 1, currentPage === 1));
 
-        // 숫자 버튼 (최대 10개 등 제한 가능하나 여기선 전체 출력)
-        for (let i = 1; i <= totalPages; i++) {
-            const btnNum = createBtn(i, i, false, `page-num ${i === currentPage ? 'active' : ''}`);
-            paginationDiv.appendChild(btnNum);
+        // 숫자 버튼 범위 (최대 10까지)
+        const MAX_VISIBLE = 10;
+        let startPage = Math.max(1, currentPage - 2);
+        let endPage = Math.min(totalPages, startPage + MAX_VISIBLE - 1);
+
+        // 숫자 버튼
+        for (let i = startPage; i <= endPage; i++) {
+            paginationDiv.appendChild(
+                createBtn(i, i, false)
+            );
         }
 
         // 다음, 끝 버튼
@@ -190,7 +196,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // HTML의 컨테이너에 삽입
         const container = document.getElementById('paginationContainer');
         if (container) container.appendChild(paginationDiv);
-        else resultsArea.appendChild(paginationDiv);
+        else if (resultsArea) resultsArea.appendChild(paginationDiv);
     }
 
     // --- [4. 이벤트 리스너: 사용자 인터랙션] ---
@@ -203,13 +209,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                 // UI 업데이트: active 클래스 이동
                 categoryTabs.forEach(t => t.classList.remove('active'));
                 tab.classList.add('active');
+
+                const category = tab.dataset.category || 'all';
+                currentCategory = category;
+                currentPage = 1;
                 
-                const category = tab.getAttribute('data-category') || 'all';
-                
-                // 제목 텍스트 변경 (전체 -> 정치 등)
-                if (categoryNameDisplay) categoryNameDisplay.innerText = tab.innerText;
-                
-                // 데이터 새로고침
+                // 아래 제목 동기화
+                if (categoryNameDisplay) {
+                categoryNameDisplay.innerText = tab.textContent.trim();
+                }
+
                 loadCurationNews(category, 1);
             });
         });
@@ -217,19 +226,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         // 4-2. 정확도순/최신순 정렬 버튼 클릭 시
         document.querySelectorAll('.sort-btn').forEach(button => {
             button.addEventListener('click', (e) => {
-                const selectedSort = e.target.getAttribute('data-sort');
-                
-                if (currentSort === selectedSort) return; // 이미 선택된 거면 무시
+                const selectedSort = e.currentTarget.dataset.sort;
 
+                // 이미 선택된 정렬이면 아무 것도 안 함
+                if (currentSort === selectedSort) return;
+
+                // 상태 변경
                 currentSort = selectedSort;
+                currentPage = 1;
 
-                // UI 업데이트: 버튼 강조 변경
-                document.querySelectorAll('.sort-btn').forEach(btn => btn.classList.remove('active'));
-                e.target.classList.add('active');
+                // UI: 주황색(active) 토글
+                document.querySelectorAll('.sort-btn')
+                    .forEach(btn => btn.classList.remove('active'));
+                e.currentTarget.classList.add('active');
 
-                // 첫 페이지부터 다시 로드
+                // 데이터 재로드
                 loadCurationNews(currentCategory, 1);
             });
         });
-
-    }); // DOMContentLoaded 종료
+}); // DOMContentLoaded 종료
