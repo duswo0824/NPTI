@@ -147,7 +147,7 @@ def news_raw(max_pages: int = 5):
         return {"status": "error", "message": str(e)}
 
 sch = sch_start()
-@app.get("/scheduler_start")
+@app.get("/scheduler_start") # scheduler 수동 시작
 async def scheduler_start():
     if not sch.running:
         sch.start()
@@ -650,13 +650,33 @@ async def update_state_loop():
     while True:
         if not result_queue.empty():
             latest_breaking = result_queue.get()
-            app.state.breaking_news = latest_breaking
+            if isinstance(latest_breaking, dict) and "final_group" in latest_breaking:
+                app.state.breaking_news = latest_breaking
+                print("New breaking news data updated!")
         await asyncio.sleep(1)
 
 @app.on_event("startup")
 async def startup_event():
+    if not sch.running:
+        sch.start()
+    app.state.breaking_news = {'msg':'스케쥴러 가동 중 - 데이터 준비 중'} # 초기값
     asyncio.create_task(update_state_loop())
 
-@app.post("/render_breaking")
+@app.get("/render_breaking")
 def render_breaking():
-    return getattr(app.state, "breaking_news", {"msg": "데이터가 아직 없습니다."})
+    grouping_result = getattr(app.state, "breaking_news", {"msg": "데이터가 아직 없습니다."})
+    breaking_topic = grouping_result.get('final_group') # None or ['news_id1', 'news_id2']
+    if not breaking_topic:
+        return {"breaking_news": None, "msg":"데이터 없음"}
+    id_title_list = []
+    for topic in breaking_topic:
+        query = {"size": 1,"_source": ["news_id", "title", "timestamp"],
+          "query": {"terms": {"news_id": topic}},
+          "sort": [{"timestamp": {"order": "desc"}}]}
+        res = search_news_condition(query)
+        if res and res.get("hits") and res["hits"]["hits"]:
+            first_hit = res["hits"]["hits"][0]["_source"]
+            id_title = {"id":first_hit["news_id"], "title":first_hit["title"]}
+            id_title_list.append(id_title)
+
+    return {"breaking_news": id_title_list, "msg":"데이터 있음"}
