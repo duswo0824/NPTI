@@ -137,3 +137,11 @@ def get_my_page_data(db: Session, user_id: str):
         "age": user.user_age,
         "gender": gender_str
     }
+
+def deactivate_user(db: Session, user_id: str):
+    """
+    유저 탈퇴 처리: activation 컬럼을 0(비활성)으로 변경
+    """
+    sql = text("UPDATE user_info SET activation = 0 WHERE user_id = :user_id")
+    db.execute(sql, {"user_id": user_id})
+    db.commit()
