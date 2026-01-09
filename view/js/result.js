@@ -185,7 +185,7 @@ function renderChartItem(key, pair, score, idx) {
     }
 
     // B. [애니메이션] 막대기만 서서히 차오름
-    const bar = container.querySelector('.bar-fill');
+    const bar = container.querySelector('.progress-bar.orange-bar');
     if (bar) {
         bar.style.transition = "none";
         bar.style.width = "0%";
@@ -201,7 +201,6 @@ function renderChartItem(key, pair, score, idx) {
         setTimeout(() => {
             bar.style.transition = "width 1.2s ease-out";
             bar.style.width = maxVal + "%";
-            bar.style.backgroundColor = "var(--orange)";
         }, 100);
     }
 }

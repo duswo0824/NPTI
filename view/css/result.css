@@ -104,6 +104,7 @@
 
 .orange-bar,
 .orange-bar-right {
+    position: absolute;
     height: 100%;
     background: var(--orange);
     width: 0;
