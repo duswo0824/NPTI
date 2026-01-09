@@ -127,20 +127,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         articles.forEach(news => {
             const articleHtml = `
-                <div class="news-card">
+                <div class="news-card"
+                    onclick="location.href='/article?news_id=${news.id}'" style="cursor:pointer;">
                     <div class="news-img">
-                        <img src="${news.thumbnail || '/view/img/default.png'}" 
-                             alt="뉴스 썸네일" 
-                             onerror="this.src='/view/img/default.png'">
+                        <img src="${news.thumbnail || '/view/img/default.png'}"
+                            onerror="this.src='/view/img/default.png'">
                     </div>
                     <div class="news-info">
-                        <h3 onclick="location.href='/article?id=${news.id}'" style="cursor:pointer;">
-                            ${news.title}
-                        </h3>
+                        <h3>${news.title}</h3>
                         <p class="summary">${news.summary}</p>
                         <div class="news-meta">
-                            <span class="publisher">${news.publisher}</span> | 
-                            <span class="date">${news.date}</span>
+                            <span>${news.publisher}</span> | 
+                            <span>${news.date}</span>
                         </div>
                     </div>
                 </div>
