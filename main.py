@@ -30,6 +30,8 @@ from db_index.db_user_npti import UserNPTITable, UserNPTIResponse
 from elasticsearch_index.es_raw import ES_INDEX, search_news_condition
 from db_index.db_articles_NPTI import ArticlesNPTI
 import math
+from datetime import datetime
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 
@@ -237,27 +239,37 @@ async def get_result_page():
     return FileResponse("view/html/result.html")
 
 @app.post("/result")
-async def api_get_result_data(request: Request, db: Session = Depends(get_db)):
-    """결과 페이지에 필요한 모든 DB 데이터 통합 조회"""
-    user_id = request.session.get("user_id")
-    if not user_id:
-        return JSONResponse(status_code=401, content={"success": False})
+def api_get_result_data(request: Request, db: Session = Depends(get_db)):
+    try:
+        user_id = request.session.get("user_id")
+        user_name = request.session.get("user_name", "독자")
 
-    # 유저 점수 조회
-    user_npti = get_user_npti_info(db, user_id)
-    if not user_npti:
-        return {"hasResult": False}
+        if not user_id:
+            return {"isLoggedIn": False, "hasNPTI": False}
 
-    # 유형 상세 설명(닉네임 등) 및 차트 라벨 정보 조회
-    code_info = get_npti_code_by_code(db, user_npti['npti_code'])
-    all_types = get_all_npti_type(db)
+        # 1. 최신 데이터 조회 (일반 함수 호출)
+        user_data = get_user_npti_info(db, user_id)
 
-    return {
-        "hasResult": True,
-        "user_npti": user_npti,
-        "code_info": code_info,
-        "all_types": all_types
-    }
+        if not user_data:
+            return {"isLoggedIn": True, "hasNPTI": False, "user_name": user_name}
+
+        # 2. 날짜 직렬화 (JSON 에러 방지 핵심)
+        if user_data.get('updated_at') and isinstance(user_data['updated_at'], datetime):
+            user_data['updated_at'] = user_data['updated_at'].strftime('%Y-%m-%d %H:%M:%S')
+
+        # 3. 통합 데이터 반환 (컬럼명 이슈 해결을 위해 별칭을 사용하는 함수들)
+        return {
+            "isLoggedIn": True,
+            "hasNPTI": True,
+            "user_name": user_name,
+            "user_npti": user_data,
+            "code_info": get_npti_code_by_code(db, user_data['npti_code']), # 여기서 에러 해결됨
+            "all_types": get_all_npti_type(db) # 여기서도 info_type AS information_type 적용 필요
+        }
+    except Exception as e:
+        print(f"서버 에러 상세: {str(e)}")
+        return JSONResponse(status_code=500, content={"message": str(e)})
+
 
 @app.get("/search")
 def main():
@@ -529,53 +541,43 @@ async def get_mypage_page():
 async def mypage(req: Request, db: Session = Depends(get_db)):
     pass # 실직적으로 처리하는 곳
 
-@app.get("/curation", response_class=HTMLResponse)
-def curation_page():
-    with open("view/html/curation.html", encoding="utf-8") as f:
-        return f.read()
 
-@app.get("/user/npti/me")
-async def get_user_npti(request: Request,db: Session = Depends(get_db)):
-    user_id = request.session.get("user_id")
-
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
-    # user_npti와 npti_code 테이블 조인 (기본 정보 및 별칭 조회)
+@app.get("/user/npti/{user_id}")
+async def get_user_npti(user_id: str, db: Session = Depends(get_db)):
+    # 1. user_npti와 npti_code 테이블 조인 (기본 정보 및 별칭 조회)
     result = db.query(
         UserNPTITable,
-        NptiCodeTable.type_nick
+        npti_code_response.type_nick
     ).join(
-        NptiCodeTable, UserNPTITable.npti_code == NptiCodeTable.npti_code
+        npti_code_response, UserNPTITable.npti_code == npti_code_response.npti_code
     ).filter(
         UserNPTITable.user_id == user_id
     ).first()
 
-    # 유저는 있으나 NPTI 없음 → 404
     if not result:
         raise HTTPException(status_code=404, detail="NPTI data not found")
-
     user_data, type_nick = result
-    npti_code_str = user_data.npti_code
+    npti_code_str = user_data.npti_code  # 예: 'STFN'
 
-    # 각 알파벳에 매칭되는 npti_kor 값 가져오기 (npti_type 테이블 조회)
+    # 2. 각 알파벳에 매칭되는 npti_kor 값 가져오기 (npti_type 테이블 조회)
     # npti_type 테이블에서 NPTI_type 컬럼이 코드에 포함된 것들만 조회
     chars = list(npti_code_str)
-    type_items = db.query(NptiTypeTable) \
-        .filter(NptiTypeTable.NPTI_type.in_(chars)) \
-        .all()
+    type_items = db.query(npti_type_response).filter(npti_type_response.NPTI_type.in_(chars)).all()
 
     # 순서(S-T-F-N)에 맞게 딕셔너리로 맵핑 생성
     kor_map = {item.NPTI_type: item.npti_kor for item in type_items}
+
     # 최종 리스트 생성 (예: ["짧은", "이야기형", "객관적", "비판적"])
     npti_kor_list = [kor_map.get(c, "") for c in chars]
 
     return {
+        "user_id": user_data.user_id,
         "npti_code": npti_code_str,
         "type_nick": type_nick,
-        "npti_kor_list": npti_kor_list,
+        "npti_kor_list": npti_kor_list,  # 프론트에서 사용할 한글 명칭 리스트
         "updated_at": user_data.updated_at
     }
+
 
 @app.get("/curated/news")
 async def get_curated_news(
