@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Depends, Query, Request, Body, HTTPException
 from fastapi.responses import FileResponse
-from starlette.responses import JSONResponse, RedirectResponse
+from starlette.responses import JSONResponse, RedirectResponse, HTMLResponse
 from starlette.staticfiles import StaticFiles
 import pandas as pd
 from algorithm.user_NPTI import model_predict_proba
@@ -12,8 +12,8 @@ from bigkinds_crawling.news_raw import news_crawling, get_news_raw, search_artic
 from bigkinds_crawling.news_aggr_grouping import news_aggr, related_news
 from sqlalchemy.orm import Session
 from database import get_db
-from db_index.db_npti_type import get_all_npti_type, get_npti_type_by_group, npti_type_response
-from db_index.db_npti_code import get_all_npti_codes, get_npti_code_by_code, npti_code_response
+from db_index.db_npti_type import get_all_npti_type, get_npti_type_by_group, npti_type_response, NptiTypeTable
+from db_index.db_npti_code import get_all_npti_codes, get_npti_code_by_code, npti_code_response, NptiCodeTable
 from db_index.db_npti_question import get_all_npti_questions, get_npti_questions_by_axis, npti_question_response
 from db_index.db_user_info import UserCreateRequest, insert_user, authenticate_user, get_my_page_data
 from db_index.db_user_npti import get_user_npti_info
@@ -29,10 +29,19 @@ from db_index.db_user_npti import UserNPTITable, UserNPTIResponse
 from elasticsearch_index.es_raw import ES_INDEX, search_news_condition
 from db_index.db_articles_NPTI import ArticlesNPTI
 import math
+from fastapi.middleware.cors import CORSMiddleware
 
 
 app = FastAPI()
 logger = Logger().get_logger(__name__)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://127.0.0.1:5500", "http://localhost:5500"], # 프론트엔드 주소 허용
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.mount("/view",StaticFiles(directory="view"), name="view")
 app.add_middleware(
     SessionMiddleware,
@@ -555,43 +564,53 @@ async def get_mypage_page():
 async def mypage(req: Request, db: Session = Depends(get_db)):
     pass # 실직적으로 처리하는 곳
 
+@app.get("/curation", response_class=HTMLResponse)
+def curation_page():
+    with open("view/html/curation.html", encoding="utf-8") as f:
+        return f.read()
 
-@app.get("/user/npti/{user_id}")
-async def get_user_npti(user_id: str, db: Session = Depends(get_db)):
-    # 1. user_npti와 npti_code 테이블 조인 (기본 정보 및 별칭 조회)
+@app.get("/user/npti/me")
+async def get_user_npti(request: Request,db: Session = Depends(get_db)):
+    user_id = request.session.get("user_id")
+
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    # user_npti와 npti_code 테이블 조인 (기본 정보 및 별칭 조회)
     result = db.query(
         UserNPTITable,
-        npti_code_response.type_nick
+        NptiCodeTable.type_nick
     ).join(
-        npti_code_response, UserNPTITable.npti_code == npti_code_response.npti_code
+        NptiCodeTable, UserNPTITable.npti_code == NptiCodeTable.npti_code
     ).filter(
         UserNPTITable.user_id == user_id
     ).first()
 
+    # 유저는 있으나 NPTI 없음 → 404
     if not result:
         raise HTTPException(status_code=404, detail="NPTI data not found")
-    user_data, type_nick = result
-    npti_code_str = user_data.npti_code  # 예: 'STFN'
 
-    # 2. 각 알파벳에 매칭되는 npti_kor 값 가져오기 (npti_type 테이블 조회)
+    user_data, type_nick = result
+    npti_code_str = user_data.npti_code
+
+    # 각 알파벳에 매칭되는 npti_kor 값 가져오기 (npti_type 테이블 조회)
     # npti_type 테이블에서 NPTI_type 컬럼이 코드에 포함된 것들만 조회
     chars = list(npti_code_str)
-    type_items = db.query(npti_type_response).filter(npti_type_response.NPTI_type.in_(chars)).all()
+    type_items = db.query(NptiTypeTable) \
+        .filter(NptiTypeTable.NPTI_type.in_(chars)) \
+        .all()
 
     # 순서(S-T-F-N)에 맞게 딕셔너리로 맵핑 생성
     kor_map = {item.NPTI_type: item.npti_kor for item in type_items}
-
     # 최종 리스트 생성 (예: ["짧은", "이야기형", "객관적", "비판적"])
     npti_kor_list = [kor_map.get(c, "") for c in chars]
 
     return {
-        "user_id": user_data.user_id,
         "npti_code": npti_code_str,
         "type_nick": type_nick,
-        "npti_kor_list": npti_kor_list,  # 프론트에서 사용할 한글 명칭 리스트
+        "npti_kor_list": npti_kor_list,
         "updated_at": user_data.updated_at
     }
-
 
 @app.get("/curated/news")
 async def get_curated_news(
