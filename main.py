@@ -3,8 +3,9 @@ from fastapi.responses import FileResponse
 from starlette.responses import JSONResponse, RedirectResponse
 from starlette.staticfiles import StaticFiles
 import pandas as pd
+import asyncio
 from algorithm.user_NPTI import model_predict_proba
-from bigkinds_crawling.scheduler import sch_start
+from bigkinds_crawling.scheduler import sch_start, result_queue
 from bigkinds_crawling.sample import sample_crawling, get_sample
 from logger import Logger
 from typing import Optional
@@ -15,7 +16,7 @@ from database import get_db
 from db_index.db_npti_type import get_all_npti_type, get_npti_type_by_group, npti_type_response
 from db_index.db_npti_code import get_all_npti_codes, get_npti_code_by_code, npti_code_response
 from db_index.db_npti_question import get_all_npti_questions, get_npti_questions_by_axis, npti_question_response
-from db_index.db_user_info import UserCreateRequest, insert_user, authenticate_user, get_my_page_data
+from db_index.db_user_info import UserCreateRequest, insert_user, authenticate_user
 from db_index.db_user_npti import get_user_npti_info
 from sqlalchemy import text
 from starlette.middleware.sessions import SessionMiddleware
@@ -47,45 +48,6 @@ def main():
     return FileResponse("view/html/main.html")
 
 
-# @app.get("/news/ticker")
-# async def get_ticker_news():
-#     try:
-#         # 1. 스케줄러(/scheduler_start)가 5분마다 갱신한 그룹 데이터 호출
-#         # final_groups 예시: [ ["id1", "id2"], ["id3"], ... ]
-#         final_groups = news_aggr()
-#
-#         if not final_groups:
-#             return {"data": []}
-#
-#         ticker_data = []
-#
-#         # 2. 각 그룹(주제별 묶음)을 순회하며 가장 최신 기사 선별
-#         for group in final_groups:
-#             if not group:
-#                 continue
-#
-#             # [수정] timestamp 필드를 기준으로 가장 늦은(최신) 1건 조회
-#             res = es.search(index="news_raw", body={
-#                 "query": {"ids": {"values": group}},
-#                 "sort": [{"timestamp": {"order": "desc"}}],  # 최신 수집 시간 기준
-#                 "size": 1
-#             })
-#
-#             hits = res['hits']['hits']
-#             if hits:
-#                 latest_news = hits[0]
-#                 ticker_data.append({
-#                     "_id": latest_news['_id'],
-#                     "title": latest_news['_source'].get('title', '제목 없음')
-#                 })
-#
-#         # 3. 분석된 모든 주제의 대표 기사 리스트 반환
-#         return {"data": ticker_data}
-#
-#     except Exception as e:
-#         # 에러 발생 시 빈 배열을 반환하여 Ticker를 숨김 처리
-#         print(f"Ticker 추출 중 오류 발생: {e}")
-#         return {"data": []}
 
 @app.get("/article")
 async def view_page():
@@ -185,7 +147,7 @@ def news_raw(max_pages: int = 5):
         return {"status": "error", "message": str(e)}
 
 sch = sch_start()
-@app.get("/scheduler_start")
+@app.get("/scheduler_start") # scheduler 수동 시작
 async def scheduler_start():
     if not sch.running:
         sch.start()
@@ -253,6 +215,8 @@ async def save_test_result(request: Request, payload: dict = Body(...), db: Sess
         insert_user_npti(db, npti_params)
 
         db.commit()  # 최종 커밋
+        request.session['hasNPTI']=True
+        request.session['npti_result'] = payload.get("npti_result")
         return {"success": True, "message": "저장 완료"}
 
     except Exception as e:
@@ -470,6 +434,7 @@ def auth_me(request: Request):
 
     user_id = session.get("user_id")
     npti_result = session.get("npti_result")
+    logger.info(npti_result)
 
     return {
         # 로그인 여부
@@ -681,3 +646,37 @@ def update_user_npti(request: Request, db: Session = Depends(get_db)):
         # user_npti 점수에 interest_score 반영하는 로직 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! (까먹으면 안됨)
     return None
 
+async def update_state_loop():
+    while True:
+        if not result_queue.empty():
+            latest_breaking = result_queue.get()
+            if isinstance(latest_breaking, dict) and "final_group" in latest_breaking:
+                app.state.breaking_news = latest_breaking
+                print("New breaking news data updated!")
+        await asyncio.sleep(1)
+
+@app.on_event("startup")
+async def startup_event():
+    if not sch.running:
+        sch.start()
+    app.state.breaking_news = {'msg':'스케쥴러 가동 중 - 데이터 준비 중'} # 초기값
+    asyncio.create_task(update_state_loop())
+
+@app.get("/render_breaking")
+def render_breaking():
+    grouping_result = getattr(app.state, "breaking_news", {"msg": "데이터가 아직 없습니다."})
+    breaking_topic = grouping_result.get('final_group') # None or ['news_id1', 'news_id2']
+    if not breaking_topic:
+        return {"breaking_news": None, "msg":"데이터 없음"}
+    id_title_list = []
+    for topic in breaking_topic:
+        query = {"size": 1,"_source": ["news_id", "title", "timestamp"],
+          "query": {"terms": {"news_id": topic}},
+          "sort": [{"timestamp": {"order": "desc"}}]}
+        res = search_news_condition(query)
+        if res and res.get("hits") and res["hits"]["hits"]:
+            first_hit = res["hits"]["hits"][0]["_source"]
+            id_title = {"id":first_hit["news_id"], "title":first_hit["title"]}
+            id_title_list.append(id_title)
+
+    return {"breaking_news": id_title_list, "msg":"데이터 있음"}

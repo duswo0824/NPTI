@@ -48,7 +48,7 @@ def related_news(news_title:str, exclude_id:str, category:str):
 
 
 kiwi = Kiwi()
-def news_aggr():
+def news_aggr(*args):
     processed_ids = set()
     try:
         # 1. 처리된 기사 ID 확인
@@ -290,11 +290,15 @@ def news_aggr():
               f"first_group : \n{groups_1st}\n"
               f"final_groups(필터링됨) : \n{final_groups}")
 
-        return {
+        res = {
             "target_breaking_ids_list": target_breaking_ids_list,
             "first_group": groups_1st,
             "final_group": final_groups
         }
+
+        q = args[-1]
+        q.put(res)
+        return res
 
     except Exception as e:
         logger.error(f"news_aggr error: {e}")
