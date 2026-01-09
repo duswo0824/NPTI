@@ -160,11 +160,29 @@ async function handleTestSubmit(e) {
     
     // 100분율 변환 및 반올림 (DB가 INT이므로 정수로 변환)
     Object.keys(finalScores).forEach(key => {
-        // 0.75 * 100 = 75 (정수형태로 만듦)
-        finalScores[key] = Math.round(finalScores[key] * 100);
+        // 1. 먼저 가중치가 곱해진 순수 백분율 값을 구합니다. (예: 0.496 * 100 = 49.6)
+        let rawPercent = finalScores[key] * 100;
+        let finalValue;
+
+        // 2. [반올림 전 보정] 50점 인근의 데드존(Dead Zone) 처리
+        if (rawPercent >= 49 && rawPercent < 50) {
+            // 49.0 ~ 49.999... 구간은 무조건 49로 고정
+            finalValue = 49;
+        }
+        else if (rawPercent >= 50 && rawPercent < 51) {
+            // 50.0 ~ 50.999... 구간은 무조건 51로 고정
+            finalValue = 51;
+        }
+        else {
+            // 그 외의 구간(예: 48.2, 52.7 등)은 일반적인 반올림 처리
+            finalValue = Math.round(rawPercent);
+        }
+
+        // 3. 최종 정수 값 저장 (DB가 INT형이므로 정수 보장)
+        finalScores[key] = finalValue;
     });
 
-    console.log("서버로 전송할 100분율 점수:", finalScores);
+    console.log("보정된 정수 점수 (50점 없음):", finalScores);
 
     // 최종 NPTI 타입 결정 4글자 코드 생성
     const type = [
