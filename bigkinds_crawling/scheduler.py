@@ -1,5 +1,5 @@
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-
+import multiprocessing
 from Naver.naver_crawling import crawling_general_news, crawling_sports_news, crawler_naver, run_fast_crawl, \
     run_slow_crawl
 from algorithm.news_NPTI import classify_npti_fast, init_npti
@@ -12,6 +12,7 @@ from datetime import datetime, timezone, timedelta
 
 logger = Logger().get_logger(__name__)
 
+result_queue = multiprocessing.Queue()
 
 # 1. 하나의 통합된 실행 제어 함수
 def run_job_with_timeout(func, args, timeout, on_success=None):
@@ -21,7 +22,7 @@ def run_job_with_timeout(func, args, timeout, on_success=None):
     timeout: 제한 시간 (초 단위)
     """
     # 별도 프로세스로 작업 시작
-    p = multiprocessing.Process(target=func, args=args)
+    p = multiprocessing.Process(target=func, args=(*args, result_queue))
     p.start()
     print(f"{func} 함수 시작")
 
