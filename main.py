@@ -16,7 +16,7 @@ from database import get_db
 from db_index.db_npti_type import get_all_npti_type, get_npti_type_by_group, npti_type_response, NptiTypeTable
 from db_index.db_npti_code import get_all_npti_codes, get_npti_code_by_code, npti_code_response, NptiCodeTable
 from db_index.db_npti_question import get_all_npti_questions, get_npti_questions_by_axis, npti_question_response
-from db_index.db_user_info import UserCreateRequest, insert_user, authenticate_user
+from db_index.db_user_info import UserCreateRequest, insert_user, authenticate_user, deactivate_user, get_my_page_data
 from db_index.db_user_npti import get_user_npti_info
 from sqlalchemy import text
 from starlette.middleware.sessions import SessionMiddleware
@@ -449,6 +449,19 @@ def login(req: dict, request: Request, db: Session = Depends(get_db)):
 
     return {"success": True}
 
+@app.post("/users/withdraw")
+async def withdraw(request: Request, db: Session = Depends(get_db)):
+    user_id = request.session.get("user_id")
+    if not user_id:
+        return JSONResponse(status_code=401, content={"success": False})
+
+    # 1. DB 상태 변경 (비활성화)
+    deactivate_user(db, user_id)
+
+    # 2. 세션 삭제 (로그아웃 처리)
+    request.session.clear()
+    return {"success": True}
+
 #로그인 상태를 확인
 @app.get("/auth/me")
 def auth_me(request: Request):
@@ -532,6 +545,28 @@ def get_about(db: Session = Depends(get_db)):
         },
         "criteria": criteria,
         "guides": guides
+    }
+
+@app.get("/users/me/profile")
+async def get_my_profile(request: Request, db: Session = Depends(get_db)):
+    user_id = request.session.get("user_id")
+    if not user_id:
+        return JSONResponse(status_code=401, content={"message": "로그인 필요"})
+
+    # 도구 사용
+    user = get_my_page_data(db, user_id)
+
+    if not user:
+        return JSONResponse(status_code=404, content={"message": "사용자 정보를 찾을 수 없습니다."})
+
+    # [중요] db_user_info.py에서 정의한 'userId' 키값을 사용해야 함
+    return {
+        "userId": user['userId'],
+        "name": user['name'],
+        "email": user['email'],
+        "birth": user['birth'],
+        "age": user['age'],
+        "gender": user['gender']
     }
 
 @app.get("/mypage")
