@@ -34,7 +34,7 @@ class UserNPTITable(Base):
 # =========================
 # 조회 (가장 최신 결과 1건만 가져오기)
 # =========================
-def get_user_npti(db: Session, user_id: str):
+def get_user_npti_info(db: Session, user_id: str):
     logger.info(f"user_npti 최신 결과 조회 시작: {user_id}")
 
     sql = text("""
