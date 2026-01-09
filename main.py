@@ -242,7 +242,7 @@ async def get_result_page():
 def api_get_result_data(request: Request, db: Session = Depends(get_db)):
     try:
         user_id = request.session.get("user_id")
-        user_name = request.session.get("user_name", "독자")
+        # user_name = request.session.get("user_name", "독자")
 
         if not user_id:
             return {"isLoggedIn": False, "hasNPTI": False}
@@ -251,7 +251,7 @@ def api_get_result_data(request: Request, db: Session = Depends(get_db)):
         user_data = get_user_npti_info(db, user_id)
 
         if not user_data:
-            return {"isLoggedIn": True, "hasNPTI": False, "user_name": user_name}
+            return {"isLoggedIn": True, "hasNPTI": False, "user_id": user_id}
 
         # 2. 날짜 직렬화 (JSON 에러 방지 핵심)
         if user_data.get('updated_at') and isinstance(user_data['updated_at'], datetime):
@@ -261,7 +261,8 @@ def api_get_result_data(request: Request, db: Session = Depends(get_db)):
         return {
             "isLoggedIn": True,
             "hasNPTI": True,
-            "user_name": user_name,
+            "user_id": user_id,
+            # "user_name": user_name,
             "user_npti": user_data,
             "code_info": get_npti_code_by_code(db, user_data['npti_code']), # 여기서 에러 해결됨
             "all_types": get_all_npti_type(db) # 여기서도 info_type AS information_type 적용 필요
