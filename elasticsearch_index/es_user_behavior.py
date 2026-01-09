@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 from logger import Logger
 from elasticsearch import Elasticsearch,helpers
 
@@ -71,7 +73,7 @@ def index_user_behavior(behavior_list:list): # raw_news 데이터를 indexing하
         logger.error(f"ES Indexing 실패: {e}")
         return 0
 
-def search_user_behavior(user_id: str):
+def search_user_behavior(user_id: str, start_timestamp):
     body = {
         "query": {
             "bool": {
@@ -80,13 +82,15 @@ def search_user_behavior(user_id: str):
                     {"term": {"user_id": user_id}},
 
                     # 2. timestamp가 start_timestamp 이상 (gte)
-                    # {"range": {"timestamp": {"gte": start_timestamp}}}
+                    {"range": {"stored_time": {"gte": start_timestamp}}}
                 ]
             }
         },
         # 3. 시간 순서대로 정렬 (오름차순)
         "sort": [
-            {"timestamp": {"order": "asc"}}
+            {"stored_time": {"order": "asc"}},
+            {"news_id": {"order": "asc"}},
+            {"timestamp":{"order":"asc"}}
         ],
         "size": 10000
     }
@@ -97,8 +101,15 @@ def search_user_behavior(user_id: str):
         hits = response['hits']['hits']
         logs = [hit['_source'] for hit in hits]
 
-        print(f"[검색 완료] User: {user_id} |  Count: {len(logs)}")
-        return logs
+        grouped_dict = defaultdict(list) #
+        for log in logs:
+            n_id = log.get('news_id')
+            if n_id:
+                grouped_dict[n_id].append(log)
+        grouped_logs = list(grouped_dict.values())
+        print(f'[검색 완료] User: {user_id} | Total logs: {len(logs)} | Groups: {len(grouped_logs)}')
+        return grouped_logs
+
 
     except Exception as e:
         print(f"[검색 실패] {e}")
