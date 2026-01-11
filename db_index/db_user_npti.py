@@ -39,8 +39,8 @@ def get_user_npti_info(db: Session, user_id: str):
 
     sql = text("""
         SELECT
-            user_id, npti_code, length_score, article_score, 
-            information_score, view_score, updated_at
+            user_id, npti_code, long_score, short_score, content_score, tale_score,
+            fact_score, insight_score, positive_score, negative_score, updated_at
         FROM user_npti
         WHERE user_id = :user_id
         ORDER BY updated_at DESC
@@ -69,18 +69,14 @@ def insert_user_npti(db: Session, params: dict):
         INSERT INTO user_npti (
             user_id,
             npti_code,
-            length_score,
-            article_score,
-            information_score,
-            view_score
+            long_score, short_score, content_score, tale_score,
+            fact_score, insight_score, positive_score, negative_score, updated_at
         )
         VALUES (
             :user_id,
             :npti_code,
-            :length_score,
-            :article_score,
-            :information_score,
-            :view_score
+            :long_score, :short_score, :content_score, :tale_score,
+            :fact_score, :insight_score, :positive_score, :negative_score, :updated_at
         )
     """)
 
@@ -92,3 +88,11 @@ def insert_user_npti(db: Session, params: dict):
         db.rollback()  # 에러 발생 시 원상복구
         logger.error(f"user_npti 저장 실패: {str(e)}")
         raise e
+
+def finalize_score(val):
+    int_val = int(round(val))
+    final_val = max(0, min(100, int_val))
+    # 50 예외 처리
+    if final_val == 50:
+        return 51 if val >= 50 else 49
+    return final_val
