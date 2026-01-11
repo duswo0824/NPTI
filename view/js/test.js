@@ -191,11 +191,18 @@ async function handleTestSubmit(e) {
         finalScores.information > 50 ? 'F' : 'I',
         finalScores.view > 50 ? 'N' : 'P'
     ].join('');
+    const nptiScores = {
+     long: 100 - finalScores.length, short:finalScores.length,
+     content: 100 - finalScores.article, tale: finalScores.article,
+     fact : finalScores.information , insight : 100 - finalScores.information,
+     positive: finalScores.view, negative: 100 - finalScores.view}
+
+     console.log("최종 npti 점수 ; ", nptiScores)
 
     // 백엔드 /npti/save 호출
     const payload = {
         npti_result: type,
-        scores: finalScores,
+        scores: nptiScores,
         answers: answers
     };
 
