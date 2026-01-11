@@ -510,7 +510,7 @@ function setupGlobalEvents(isLoggedIn, hasNPTI) {
             // 유저 아이콘
             if (link.classList.contains('user')) {
                 e.preventDefault();
-                location.href = '/view/html/mypage.html';
+                location.href = '/mypage';
             }
         };
     });
