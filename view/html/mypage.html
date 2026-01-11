@@ -31,7 +31,7 @@
             </div>
 
             <div class="header-center">
-                <a href="/view/html/main.html" class="logo">
+                <a href="/" class="logo">
                     <h1>NPTI</h1>
                 </a>
                 <p>News Personality Type Indicator</p>
@@ -39,9 +39,9 @@
             <div class="header-right">
                 <a href="/view/html/login.html" class="login-link" id="authLink">로그인/회원가입</a>
                 <div class="icons">
-                    <button class="icon-btn search" onclick="location.href='/view/html/search.html'"><i
+                    <button class="icon-btn search" onclick="location.href='/search'"><i
                             class="fa-solid fa-magnifying-glass"></i></button>
-                    <button class="icon-btn user" onclick="location.href='/view/html/mypage.html'"><i
+                    <button class="icon-btn user" onclick="location.href='/mypage'"><i
                             class="fa-regular fa-user"></i></button>
                 </div>
             </div>
@@ -109,24 +109,24 @@
             <div class="chart-container">
                 <div class="chart-item">
                     <div class="chart-labels">
-                        <span class="label-left">짧은 기사 <b id="score-S">0%</b></span>
+                        <span class="label-left">짧은 기사 <b id="score-L">0%</b></span>
                         <span class="type-title">Length Type</span>
-                        <span class="label-right"><b id="score-L">0%</b> 긴 기사</span>
+                        <span class="label-right"><b id="score-S">0%</b> 긴 기사</span>
                     </div>
                     <div class="chart-bar-area">
-                        <span class="char-left" id="char-S">S</span>
+                        <span class="char-left" id="char-L">L</span>
                         <div class="progress-track" id="track-Length">
                             <div class="progress-bar" id="barLength"></div>
                         </div>
-                        <span class="char-right" id="char-L">L</span>
+                        <span class="char-right" id="char-S">S</span>
                     </div>
                 </div>
         
                 <div class="chart-item">
                     <div class="chart-labels">
-                        <span class="label-left">텍스트 중심 <b id="score-C">0%</b></span>
+                        <span class="label-left">텍스트 중심 기사<b id="score-C">0%</b></span>
                         <span class="type-title">Article Type</span>
-                        <span class="label-right"><b id="score-T">0%</b> 이야기형</span>
+                        <span class="label-right"><b id="score-T">0%</b> 이야기형 기사</span>
                     </div>
                     <div class="chart-bar-area">
                         <span class="char-left" id="char-C">C</span>
@@ -139,16 +139,16 @@
         
                 <div class="chart-item">
                     <div class="chart-labels">
-                        <span class="label-left">객관적 기사 <b id="score-F">0%</b></span>
+                        <span class="label-left">객관적 기사 <b id="score-I">0%</b></span>
                         <span class="type-title">Information Type</span>
-                        <span class="label-right"><b id="score-I">0%</b> 분석 기사</span>
+                        <span class="label-right"><b id="score-F">0%</b> 분석 기사</span>
                     </div>
                     <div class="chart-bar-area">
-                        <span class="char-left" id="char-F">F</span>
+                        <span class="char-left" id="char-I">I</span>
                         <div class="progress-track" id="track-Info">
                             <div class="progress-bar" id="barInfo"></div>
                         </div>
-                        <span class="char-right" id="char-I">I</span>
+                        <span class="char-right" id="char-F">F</span>
                     </div>
                 </div>
         
@@ -187,7 +187,7 @@
 
         </section>
 
-        <section class="npti-status-banner" onclick="location.href='/view/html/test.html'">
+        <section class="npti-status-banner" onclick="location.href='/test'">
             <div class="banner-left">
                 <p><span class="highlight">NPTI 진단</span>으로 맞춤 뉴스를 받아보세요</p>
             </div>
