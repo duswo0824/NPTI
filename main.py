@@ -17,7 +17,7 @@ from db_index.db_npti_type import get_all_npti_type, get_npti_type_by_group, npt
 from db_index.db_npti_code import get_all_npti_codes, get_npti_code_by_code, npti_code_response, NptiCodeTable
 from db_index.db_npti_question import get_all_npti_questions, get_npti_questions_by_axis, npti_question_response
 from db_index.db_user_info import UserCreateRequest, insert_user, authenticate_user, deactivate_user, get_my_page_data
-from db_index.db_user_npti import get_user_npti_info
+from db_index.db_user_npti import get_user_npti_info, finalize_score
 from sqlalchemy import text
 from starlette.middleware.sessions import SessionMiddleware
 from elasticsearch import Elasticsearch, ConnectionError as ESConnectionError
@@ -30,7 +30,6 @@ from db_index.db_user_npti import UserNPTITable, UserNPTIResponse
 from elasticsearch_index.es_raw import ES_INDEX, search_news_condition
 from db_index.db_articles_NPTI import ArticlesNPTI
 import math
-from datetime import datetime
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -59,7 +58,7 @@ def main():
     return FileResponse("view/html/main.html")
 
 
-
+# 개별 기사 페이지 -----------------------------------------------------------------
 @app.get("/article")
 async def view_page():
     return FileResponse("view/html/view.html")
@@ -120,7 +119,7 @@ async def collect_behavior_log(request: Request):
         print(f"[에러 발생] {e}")
         return {"status": "error", "message": str(e)}
 
-
+# 기사 npti 분류 정답 데이터 수집 ----------------------------------------------------
 @app.get("/sample")
 def sample(max_pages: int = 90):
     logger.info(f"API 호출: 크롤링 시작 (최대 {max_pages} 페이지)")
@@ -215,13 +214,19 @@ async def save_test_result(request: Request, payload: dict = Body(...), db: Sess
 
         # NPTI 결과 데이터 가공 (insert_user_npti 호출)
         scores = payload.get("scores", {})
+        updated_at = datetime.now(timezone(timedelta(hours=9))).isoformat(timespec='seconds')
         npti_params = {
             "user_id": user_id,
             "npti_code": payload.get("npti_result"),
-            "length_score": scores.get('length'),
-            "article_score": scores.get('article'),
-            "information_score": scores.get('info') or scores.get('information') or 0,
-            "view_score": scores.get('view')
+            "long_score": scores.get('long'),
+            "short_score": scores.get('short'),
+            "content_score": scores.get('content'),
+            "tale_score": scores.get('tale'),
+            "fact_score": scores.get('fact'),
+            "insight_score": scores.get('insight'),
+            "positive_score": scores.get('positive'),
+            "negative_score": scores.get('negative'),
+            "updated_at": updated_at
         }
         insert_user_npti(db, npti_params)
 
@@ -547,7 +552,7 @@ def get_about(db: Session = Depends(get_db)):
         "guides": guides
     }
 
-@app.get("/users/me/profile")
+@app.post("/mypage")
 async def get_my_profile(request: Request, db: Session = Depends(get_db)):
     user_id = request.session.get("user_id")
     if not user_id:
@@ -573,9 +578,9 @@ async def get_my_profile(request: Request, db: Session = Depends(get_db)):
 async def get_mypage_page():
     return FileResponse("view/html/mypage.html")
 
-@app.post("/mypage")
-async def mypage(req: Request, db: Session = Depends(get_db)):
-    pass # 실직적으로 처리하는 곳
+# @app.post("/mypage")
+# async def mypage(req: Request, db: Session = Depends(get_db)):
+#     pass # 실직적으로 처리하는 곳
 
 
 @app.get("/curation", response_class=HTMLResponse)
@@ -701,8 +706,15 @@ async def get_curated_news(
 @app.get("/update_user_npti")
 def update_user_npti(request: Request, db: Session = Depends(get_db)):
     user_id = request.session.get("user_id")
-    # user_id가 세션에 없는 경우 추가해야함
     latest_user_npti = get_user_npti_info(db, user_id)
+    long_score = latest_user_npti.get("long_score")
+    short_score = latest_user_npti.get("short_score")
+    content_score = latest_user_npti.get("content_score")
+    tale_score = latest_user_npti.get("tale_score")
+    fact_score = latest_user_npti.get("fact_score")
+    insight_score = latest_user_npti.get("insight_score")
+    positive_score = latest_user_npti.get("positive_score")
+    negative_score = latest_user_npti.get("negative_score")
     latest_update_time = latest_user_npti.get('timestamp')
     behavior_log_per_news = search_user_behavior(user_id, latest_update_time) # [[{},{}],[{},{},{},],[{}]] 형태
     for behavior_log in behavior_log_per_news: # [{},{}]
@@ -710,18 +722,84 @@ def update_user_npti(request: Request, db: Session = Depends(get_db)):
             continue
         result = model_predict_proba(behavior_log)# {userid:, news_id:, dwell time:, final_read_time:, reading_efficiency: } 같은 dictionary
         reading_efficiency = result.get('reading_efficiency')
-        news_id = result.get('news_id')
-        body = {"query": {"term": {"news_id": "검색할_news_id"}},"_source": ["content"],"script_fields": {"word_count": {"script": {"lang": "painless",
-        "source": """if (params['_source']['content'] != null && params['_source']['content'].trim().length() > 0) {
-            return params['_source']['content'].trim().splitOnTokenizePattern(/\\s+/).length;}return 0;"""}}}}
+        id = result.get('news_id')
+        body = {"query": {"term": {"news_id": id}},"_source": ["content"]}
         response = search_news_condition(body)
+        n_word = 0
         if response and response['hits']['hits']:
-            n_word = response['hits']['hits'][0]['fields']['word_count'][0]
-        interest_score = min(1, reading_efficiency * (math.log(n_word+1) / math.log(500+1)))
-        user_npti = get_user_npti_info(db, user_id)
-        news_npti = None # ------------------------------------------------------- 성은님 질문?????
+            source_data = response['hits']['hits'][0]['_source']
+            content = source_data.get('content',"")
+            if content :
+                n_word = len(content.split())
+                print(f"news_id : {id} | n_word : {n_word}")
+        interest_score = min(1, reading_efficiency * (math.log(n_word+1) / math.log(501)))
+        result = db.query(ArticlesNPTI).filter(ArticlesNPTI.news_id == id).first()
+        news_length_type = result.length_type
+        news_article_type = result.article_type
+        news_info_type = result.info_type
+        news_view_type = result.view_type
         # user_npti 점수에 interest_score 반영하는 로직 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! (까먹으면 안됨)
-    return None
+        if news_length_type == "L":
+            long_score += interest_score
+            short_score -= interest_score
+        else:
+            short_score += interest_score
+            long_score -= interest_score
+        if news_article_type == "C":
+            content_score += interest_score
+            tale_score -= interest_score
+        else:
+            tale_score += interest_score
+            content_score -= interest_score
+        if news_info_type == "F":
+            fact_score += interest_score
+            insight_score -= interest_score
+        else:
+            insight_score += interest_score
+            fact_score -= interest_score
+        if news_view_type == "P":
+            positive_score += interest_score
+            negative_score -= interest_score
+        else:
+            negative_score += interest_score
+            positive_score -= interest_score
+    final_long_score = finalize_score(long_score)
+    final_short_score = 100 - final_long_score
+    final_tale_score = finalize_score(tale_score)
+    final_content_score = 100 - final_tale_score
+    final_insight_score = finalize_score(insight_score)
+    final_fact_score = 100 - final_insight_score
+    final_negative_score = finalize_score(negative_score)
+    final_positive_score = 100 - final_negative_score
+    final_length_type = "L" if final_long_score > final_short_score else "S"
+    final_article_type = "T" if final_tale_score > final_content_score else "C"
+    final_info_type = "I" if final_insight_score > final_fact_score else "F"
+    final_view_type = "N" if final_negative_score > final_positive_score else "P"
+    final_user_npti = final_length_type+final_article_type+final_info_type+final_view_type
+    updated_at = datetime.now(timezone(timedelta(hours=9))).strftime('%Y-%m-%d %H:%M:%S')
+    query = text("SELECT type_nick, type_de FROM npti_code WHERE npti_code = :code")
+    description = db.execute(query, {"code": final_user_npti}).fetchone()
+    params = {
+        "user_id": user_id,
+        "npti_code": final_user_npti,
+        "type_nick" : description[0],
+        "type_de" : description[1],
+        "long_score": final_long_score,
+        "short_score": final_short_score,
+        "content_score": final_content_score,
+        "tale_score": final_tale_score,
+        "fact_score": final_fact_score,
+        "insight_score": final_insight_score,
+        "positive_score": final_positive_score,
+        "negative_score": final_negative_score,
+        "updated_at": updated_at
+    }
+    insert_user_npti(db, params)
+    # long, content, insight, positive
+    request.session['user_npti'] = final_user_npti
+    print("회원 npti 정보가 성공적으로 업데이트 되었습니다!!!")
+
+    return params
 
 async def update_state_loop():
     while True:
