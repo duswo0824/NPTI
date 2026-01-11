@@ -1,297 +1,278 @@
+/* =================================================================
+   🚀 메인 실행부 (Control Tower)
+================================================================= */
+
 document.addEventListener('DOMContentLoaded', async () => {
+    // 1. UI 기본 세팅
+    setupInterface();
 
-    /* =================================================================
-       1. [서버 연동] 세션 및 NPTI 데이터 가져오기 (경로 수정)
-    ================================================================= */
-    let userData = null;
-    let nptiData = null;
+    // 2. 데이터 호출
+    const user = await fetchProfile();
+    const npti = await fetchNptiResult();
 
-    try {
-        // 1-1. 상세 프로필 정보 가져오기 (main.py의 /users/me/profile 호출)
-        const profileRes = await fetch('/users/me/profile');
-
-        if (profileRes.status === 401) {
-            window.location.replace("/login");
-            return;
-        }
-
-        if (profileRes.ok) {
-            userData = await profileRes.json();
-        }
-
-        // 1-2. NPTI 결과 정보 가져오기 (main.py의 /result POST 호출)
-        const resultRes = await fetch('/result', { method: 'POST' });
-        const resultData = await resultRes.json();
-
-        if (resultData.hasNPTI || resultData.hasResult) {
-            nptiData = {
-                ...resultData.user_npti,
-                type_nick: resultData.code_info.type_nick || resultData.code_info.information_type,
-                type_de: resultData.code_info.type_de,
-                // [중요] 서버의 information_score를 차트용 info_score로 매핑
-                info_score: resultData.user_npti.information_score
-            };
-        }
-
-    } catch (error) {
-        console.error("데이터 로드 중 오류 발생:", error);
+    // 3. 유저 정보 렌더링
+    if (user) {
+        renderUserFields(user);
+    } else {
+        window.location.replace("/login");
+        return;
     }
 
-    /* =================================================================
-       2. 요소 캐싱 (기존 UI 기능 유지를 위해 필수)
-    ================================================================= */
-    const els = {
-        // 프로필 영역
-        displayId: document.getElementById('displayId'),
-        dbName: document.getElementById('dbName'),
-        dbEmail: document.getElementById('dbEmail'),
-        dbBirth: document.getElementById('dbBirth'),
-        dbAge: document.getElementById('dbAge'),
-        dbGender: document.getElementById('dbGender'),
+    // 4. NPTI 결과 렌더링 및 업데이트 로직
+    if (npti) {
+        renderNptiContent(npti);
 
-        // NPTI 결과 영역
-        nptiResultSection: document.getElementById('nptiResultSection'),
-        resUserName: document.getElementById('resUserName'),
-        nptiCode: document.getElementById('nptiCode'),
-        nptiName: document.getElementById('nptiName'),
-        resultSummary: document.getElementById('resultSummary'),
+        const updateBtn = document.getElementById('goCurationBtn');
+        const tooltip = document.getElementById('nptiUpdateTooltip');
 
-        // UI 컨트롤 (버튼, 모달, 툴팁)
-        btnDots: document.querySelector('.btn-dots'),
-        dotsMenu: document.getElementById('dotsMenu'),
-        btnShowWithdraw: document.getElementById('btnShowWithdraw'),
-        withdrawModal: document.getElementById('withdrawModal'),
-        closeWithdraw: document.getElementById('closeWithdraw'),
-        confirmWithdraw: document.getElementById('confirmWithdraw'),
-        updateBtn: document.getElementById('goCurationBtn'),
-        updateTooltip: document.getElementById('nptiUpdateTooltip')
+        // 업데이트 버튼 클릭 이벤트 연결
+        if (updateBtn) {
+            updateBtn.onclick = () => runUpdateSimulation();
+
+            // 툴팁 이벤트
+            updateBtn.addEventListener('mouseenter', () => {
+                if (!updateBtn.disabled && tooltip) tooltip.style.display = 'block';
+            });
+            updateBtn.addEventListener('mouseleave', () => {
+                if (tooltip) tooltip.style.display = 'none';
+            });
+        }
+
+        // 시간 제한 확인
+        const lastUpdate = localStorage.getItem('lastNptiUpdate');
+        if (lastUpdate && (new Date().getTime() - lastUpdate < 3000)) {
+            applyUpdateLock();
+        }
+    } else {
+        showEmptyNpti();
+    }
+});
+
+
+/* =================================================================
+   1. 데이터 통신부 (Pure Data Fetching)
+================================================================= */
+
+async function fetchProfile() {
+    try {
+        const res = await fetch('/mypage', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        if (res.status === 401) return null;
+        return res.ok ? await res.json() : null;
+    } catch (e) {
+        console.error("프로필 로드 실패:", e);
+        return null;
+    }
+}
+
+async function fetchNptiResult() {
+    try {
+        const res = await fetch('/result', { method: 'POST' });
+        if (!res.ok) return null;
+
+        const data = await res.json();
+        if (!data.hasNPTI && !data.hasResult) return null;
+
+        return {
+            ...data.user_npti,
+            type_nick: data.code_info.type_nick || data.code_info.information_type,
+            type_de: data.code_info.type_de,
+            info_score: data.user_npti.information_score
+        };
+    } catch (e) {
+        console.error("NPTI 로드 실패:", e);
+        return null;
+    }
+}
+
+/* =================================================================
+   2. UI 렌더링부 (Pure Rendering)
+================================================================= */
+
+function renderUserFields(user) {
+    const displayId = document.getElementById('displayId');
+    if (displayId) displayId.innerText = `@${user.userId}`;
+
+    const fields = {
+        'dbName': user.name,
+        'dbEmail': user.email,
+        'dbBirth': user.birth,
+        'dbAge': user.age,
+        'dbGender': user.gender
     };
 
-    /* =================================================================
-       3. 데이터 바인딩 (서버 데이터 -> 화면 표시)
-    ================================================================= */
-
-    // 헬퍼 함수: 입력창(input)에 값을 채움
-    const setInputVal = (id, val) => {
+    Object.entries(fields).forEach(([id, val]) => {
         const el = document.getElementById(id);
         if (el) el.value = val || "";
-    };
+    });
+}
 
-    // 3-1. 유저 프로필 바인딩(main.py에서 정한 Key값 사용)
-    if (userData) {
-        const displayId = document.getElementById('displayId');
-        if (displayId) displayId.innerText = `@${userData.userId}`;
+function renderNptiContent(npti) {
+    const resSection = document.getElementById('nptiResultSection');
+    if (resSection) resSection.style.display = 'block';
 
-        setInputVal('dbName', userData.name);
-        setInputVal('dbEmail', userData.email);
-        setInputVal('dbBirth', userData.birth);
-        setInputVal('dbAge', userData.age);
-        setInputVal('dbGender', userData.gender);
-    }
+    document.getElementById('nptiCode').innerText = npti.npti_code;
+    document.getElementById('nptiName').innerText = `"${npti.type_nick}"`;
+    document.getElementById('resultSummary').innerHTML = npti.type_de;
 
-    // 3-2. NPTI 결과 바인딩 (조건부 렌더링)
-   if (nptiData) {
-        const resSection = document.getElementById('nptiResultSection');
-        if (resSection) resSection.style.display = 'block';
+    renderBarChart('barLength', npti.long_score, "L", "S", 'track-Length');
+    renderBarChart('barArticle', npti.content_score, 'C', 'T', 'track-Article');
+    renderBarChart('barInfo', npti.insight_score, "I", "F", 'track-Info');
+    renderBarChart('barView', npti.positive_score, 'P', 'N', 'track-View');
+}
 
-        if (document.getElementById('nptiCode'))
-            document.getElementById('nptiCode').innerText = nptiData.npti_code;
-        if (document.getElementById('nptiName'))
-            document.getElementById('nptiName').innerText = `"${nptiData.type_nick}"`;
-        if (document.getElementById('resultSummary'))
-            document.getElementById('resultSummary').innerHTML = nptiData.type_de;
+function renderBarChart(id, scoreLeft, charLeft, charRight, trackId) {
+    const scoreRight = 100 - scoreLeft;
+    const bar = document.getElementById(id);
+    const track = document.getElementById(trackId);
+    if (!bar || !track) return;
 
-        // 차트 렌더링 (DB 점수 활용)
-        // DB에는 한쪽 점수만 있으므로 반대쪽은 100에서 뺌
-        renderChart('barLength', nptiData.length_score, 100 - nptiData.length_score, 'S', 'L', 'track-Length');
-        renderChart('barArticle', nptiData.article_score, 100 - nptiData.article_score, 'C', 'T', 'track-Article');
-        renderChart('barInfo', nptiData.information_score, 100 - nptiData.information_score, 'F', 'I', 'track-Info');
-        renderChart('barView', nptiData.view_score, 100 - nptiData.view_score, 'P', 'N', 'track-View');
+    document.getElementById(`score-${charLeft}`).innerText = `${scoreLeft}%`;
+    document.getElementById(`score-${charRight}`).innerText = `${scoreRight}%`;
 
+    const sLeft = document.getElementById(`score-${charLeft}`);
+    const sRight = document.getElementById(`score-${charRight}`);
+    const cLeft = document.getElementById(`char-${charLeft}`);
+    const cRight = document.getElementById(`char-${charRight}`);
+
+    [cLeft, cRight].forEach(el => el?.classList.remove('char-highlight'));
+
+    const isLeftHigher = scoreLeft >= scoreRight;
+    track.style.justifyContent = isLeftHigher ? 'flex-start' : 'flex-end';
+
+    if (isLeftHigher) {
+        cLeft?.classList.add('char-highlight');
+        if(sLeft) sLeft.style.color = 'var(--orange)';
+        if(sRight) sRight.style.color = '';
     } else {
-        // 결과가 없으면 섹션 숨기기
-        if (els.nptiResultSection) els.nptiResultSection.style.display = 'none';
-
-        // 업데이트 버튼을 '진단하러 가기'로 변경 (UX 개선)
-        if(els.updateBtn) {
-            els.updateBtn.innerText = "NPTI 진단 시작하기";
-            els.updateBtn.onclick = () => location.href = "/view/html/test.html";
-            // 툴팁 제거
-            if(els.updateTooltip) els.updateTooltip.remove();
-        }
+        cRight?.classList.add('char-highlight');
+        if(sRight) sRight.style.color = 'var(--orange)';
+        if(sLeft) sLeft.style.color = '';
     }
 
-    /* =================================================================
-       4. [기능 유지] 차트 렌더링 및 애니메이션 함수
-    ================================================================= */
-    function renderChart(id, scoreLeft, scoreRight, charLeft, charRight, trackId) {
-        const bar = document.getElementById(id);
-        const track = document.getElementById(trackId);
-        const sLeft = document.getElementById(`score-${charLeft}`);
-        const sRight = document.getElementById(`score-${charRight}`);
-        const cLeft = document.getElementById(`char-${charLeft}`);
-        const cRight = document.getElementById(`char-${charRight}`);
+    bar.style.transition = 'none';
+    bar.style.width = '0%';
+    setTimeout(() => {
+        bar.style.transition = 'width 3s cubic-bezier(0.1, 0.5, 0.5, 1)';
+        bar.style.width = (isLeftHigher ? scoreLeft : scoreRight) + '%';
+        bar.className = isLeftHigher ? 'progress-bar orange-bar' : 'progress-bar orange-bar-right';
+    }, 50);
+}
 
-        if (!bar || !track) return;
+function showEmptyNpti() {
+    const resSection = document.getElementById('nptiResultSection');
+    if (resSection) resSection.style.display = 'none';
 
-        // 텍스트 설정
-        if(sLeft) sLeft.innerText = scoreLeft + '%';
-        if(sRight) sRight.innerText = scoreRight + '%';
-
-        [cLeft, cRight].forEach(el => el?.classList.remove('char-highlight'));
-
-        const isLeftHigher = scoreLeft >= scoreRight;
-
-        // 색상 및 위치 설정
-        if (isLeftHigher) {
-            track.style.justifyContent = 'flex-start';
-            cLeft?.classList.add('char-highlight');
-            if(sLeft) sLeft.style.color = 'var(--orange)';
-            if(sRight) sRight.style.color = '';
-        } else {
-            track.style.justifyContent = 'flex-end';
-            cRight?.classList.add('char-highlight');
-            if(sRight) sRight.style.color = 'var(--orange)';
-            if(sLeft) sLeft.style.color = '';
-        }
-
-        // 3초 애니메이션 실행
-        bar.style.transition = 'none';
-        bar.style.width = '0%';
-        setTimeout(() => {
-            bar.style.transition = 'width 3s cubic-bezier(0.1, 0.5, 0.5, 1)';
-            bar.style.width = (isLeftHigher ? scoreLeft : scoreRight) + '%';
-            bar.className = (isLeftHigher ? 'progress-bar orange-bar' : 'progress-bar orange-bar-right');
-        }, 50);
+    const updateBtn = document.getElementById('goCurationBtn');
+    if (updateBtn) {
+        updateBtn.innerText = "NPTI 진단 시작하기";
+        updateBtn.onclick = () => location.href = "/test";
+        document.getElementById('nptiUpdateTooltip')?.remove();
     }
+}
 
-    /* =================================================================
-       5. [기능 유지] NPTI 업데이트 버튼 잠금 로직 (여기 건들지 않음!)
-    ================================================================= */
-    // 진단 데이터가 있을 때만 작동하도록 조건 추가
-    if (nptiData) {
-        const disableUpdateBtn = () => {
-            if (!els.updateBtn) return;
-            els.updateBtn.disabled = true;
-            els.updateBtn.innerText = "업데이트 완료 (24시간 후 가능)";
-            els.updateBtn.style.backgroundColor = "#ccc";
-            els.updateBtn.style.borderColor = "#ccc";
-            els.updateBtn.style.cursor = "not-allowed";
-        };
+/* =================================================================
+   3. 기능 설정부 (Event Listeners & Action Logic)
+================================================================= */
 
-        const checkAvailability = () => {
-            const lastUpdate = localStorage.getItem('lastNptiUpdate');
-            if (lastUpdate) {
-                const now = new Date().getTime();
-                const timeDiff = now - lastUpdate;
-                // [테스트용 3초 제한] - 배포 시 24시간 로직으로 변경 필요
-                if (timeDiff < 3000) {
-                    disableUpdateBtn();
-                }
-            }
-        };
+function setupInterface() {
+    const dotsMenu = document.getElementById('dotsMenu');
+    const withdrawModal = document.getElementById('withdrawModal');
 
-        checkAvailability();
+    // 점 세개 메뉴 토글
+    document.querySelector('.btn-dots')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dotsMenu.classList.toggle('show');
+    });
 
-        // 툴팁 이벤트
-        if (els.updateBtn && els.updateTooltip) {
-            els.updateBtn.addEventListener('mouseenter', () => {
-                if (!els.updateBtn.disabled) els.updateTooltip.style.display = 'block';
-            });
-            els.updateBtn.addEventListener('mouseleave', () => {
-                els.updateTooltip.style.display = 'none';
-            });
-        }
+    // 탈퇴 모달 열기
+    document.getElementById('btnShowWithdraw')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        withdrawModal.classList.add('show');
+        dotsMenu.classList.remove('show');
+    });
 
-        // 버튼 클릭 이벤트 (기존 시뮬레이션 유지 - 건들지 않음!)
-        if (els.updateBtn) {
-            els.updateBtn.onclick = () => {
-                if (els.updateBtn.disabled) return;
+    // 탈퇴 모달 닫기
+    document.getElementById('closeWithdraw')?.addEventListener('click', () => {
+        withdrawModal.classList.remove('show');
+    });
 
-                // 1. 랜덤 점수 생성 (시각적 효과 유지)
-                const newScores = {
-                    S: Math.floor(Math.random() * 31) + 50,
-                    T: Math.floor(Math.random() * 31) + 50,
-                    F: Math.floor(Math.random() * 31) + 50,
-                    N: Math.floor(Math.random() * 31) + 50
-                };
-                newScores.L = 100 - newScores.S;
-                newScores.C = 100 - newScores.T;
-                newScores.I = 100 - newScores.F;
-                newScores.P = 100 - newScores.N;
-
-                renderChart('barLength', newScores.S, newScores.L, 'S', 'L', 'track-Length');
-                renderChart('barArticle', newScores.C, newScores.T, 'C', 'T', 'track-Article');
-                renderChart('barInfo', newScores.F, newScores.I, 'F', 'I', 'track-Info');
-                renderChart('barView', newScores.P, newScores.N, 'P', 'N', 'track-View');
-
-                // 2. 알림 메시지 (signup 스타일로 화면에 삽입)
-                if (els.resultSummary) {
-                    const successMsg = document.createElement('p');
-                    successMsg.style.color = 'var(--orange)';
-                    successMsg.style.fontWeight = '800';
-                    successMsg.style.marginTop = '15px';
-                    successMsg.innerHTML = "✨ 최근 유저 행동 데이터를 기반으로 NPTI가 업데이트되었습니다! (시뮬레이션)";
-                    els.resultSummary.appendChild(successMsg);
-                    setTimeout(() => successMsg.remove(), 3000);
-                }
-
-                // 3. 현재 시간 저장 및 버튼 잠금
-                localStorage.setItem('lastNptiUpdate', new Date().getTime());
-                disableUpdateBtn();
-                if (els.updateTooltip) els.updateTooltip.style.display = 'none';
-            };
-        }
-    }
-
-    /* =================================================================
-       6. [기능 유지] 모달 제어 및 로그아웃
-    ================================================================= */
-    const toggleWithdrawModal = (show) => {
-        if (!els.withdrawModal) return;
-        show ? els.withdrawModal.classList.add('show') : els.withdrawModal.classList.remove('show');
-        if (show && els.dotsMenu) els.dotsMenu.classList.remove('show');
-    };
-
-    if (els.btnDots) {
-        els.btnDots.onclick = (e) => {
-            e.stopPropagation();
-            els.dotsMenu.classList.toggle('show');
-        };
-    }
-
-    if (els.btnShowWithdraw) {
-        els.btnShowWithdraw.onclick = (e) => {
-            e.preventDefault();
-            toggleWithdrawModal(true);
-        };
-    }
-
-    if (els.closeWithdraw) els.closeWithdraw.onclick = () => toggleWithdrawModal(false);
-
-    // [수정된 회원 탈퇴 로직]
-if (els.confirmWithdraw) {
-    els.confirmWithdraw.onclick = async () => {
+    // [중요] 회원 탈퇴 확정 실행
+    document.getElementById('confirmWithdraw')?.addEventListener('click', async () => {
         try {
-            // 2. 로그아웃이 아닌 '탈퇴(비활성화)' API 호출
             const res = await fetch('/users/withdraw', { method: 'POST' });
-
-            if (res.ok) {
-                const data = await res.json();
-                if (data.success) {
-                    window.location.href = "/view/html/main.html";
-                }
-            } else {
-                alert("탈퇴 처리 중 오류가 발생했습니다.");
-            }
+            if (res.ok) window.location.href = "/";
+            else alert("탈퇴 처리 중 오류가 발생했습니다.");
         } catch (e) {
             console.error("탈퇴 요청 실패:", e);
         }
-    };
-}
+    });
 
     // 외부 클릭 시 메뉴 닫기
-    document.addEventListener('click', () => {
-        if (els.dotsMenu) els.dotsMenu.classList.remove('show');
-    });
-});
+    document.addEventListener('click', () => dotsMenu?.classList.remove('show'));
+}
+
+function applyUpdateLock() {
+    const updateBtn = document.getElementById('goCurationBtn');
+    if (!updateBtn) return;
+    updateBtn.disabled = true;
+    updateBtn.innerText = "업데이트 완료 (24시간 후 가능)";
+    updateBtn.style.backgroundColor = "#ccc";
+    updateBtn.style.borderColor = "#ccc";
+    updateBtn.style.cursor = "not-allowed";
+}
+
+// [중요] 업데이트 시뮬레이션 실행 함수
+async function runUpdateSimulation() {
+    const updateBtn = document.getElementById('goCurationBtn');
+    const tooltip = document.getElementById('nptiUpdateTooltip');
+    const summary = document.getElementById('resultSummary');
+    let newNPTI = null;
+
+    //fetch - get. /update_user_npti
+    try {
+        const res = await fetch('/update_user_npti', {
+            method: 'get'
+        });
+        if (res.ok) {
+            newNPTI = await res.json();
+        } else {
+            console.error("업데이트 실패");
+            return;
+        }
+
+    } catch (e) {
+        console.error("통신 에러", e)
+        return;
+    }
+    if (newNPTI) {
+        // 화면의 NPTI 코드 텍스트도 업데이트
+
+        // id, scoreLeft, charLeft, charRight, trackId
+        // long, content, insight, positive
+        renderNptiContent(newNPTI);
+
+        // 2. 성공 메시지 표시
+        if (summary) {
+            const msg = document.createElement('p');
+            msg.style.cssText = "color:var(--orange); font-weight:800; margin-top:15px;";
+            msg.innerHTML = "✨ 최근 유저 행동 데이터를 기반으로 NPTI가 업데이트되었습니다!";
+            summary.appendChild(msg);
+            setTimeout(() => msg.remove(), 3000);
+        }
+
+        // 3. 락 걸기 및 시간 저장
+        localStorage.setItem('lastNptiUpdate', new Date().getTime());
+        applyUpdateLock();
+        if (tooltip) tooltip.style.display = 'none';
+
+    }
+
+
+
+
+
+}
+
