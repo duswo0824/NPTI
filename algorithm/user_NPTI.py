@@ -453,7 +453,7 @@ def model_predict_proba(logs:list): # [{},{}] 형태 input
     model_path = os.path.join(save_dir, "model_read_efficiency.joblib")
     model = load(model_path)
     data = pd.DataFrame(logs)
-    data.rename(columns={"MMF_X_inf":"MMF_x_inf","MMF_X_inf":"MMF_y_inf","MSF_y_inf":"MMF_y_inf"}, inplace=True)
+    data.rename(columns={"MMF_X_inf":"MMF_x_inf","MMF_Y_inf":"MMF_y_inf","MSF_Y_inf":"MSF_y_inf"}, inplace=True)
     features = ['timestamp', 'MMF_y_inf', 'MMF_x_inf', 'MSF_y_inf', 'mouseX', 'mouseY', 'baseline']
     y_prob = model.predict_proba(data[features])[:, 1]
     data['pred_prob'] = y_prob
@@ -473,7 +473,7 @@ def model_predict_proba(logs:list): # [{},{}] 형태 input
         final_read_time=('pred_prob', lambda x: (x >= best_th).sum())
     ).reset_index()
 
-    result['redeing_efficiency'] = result.apply(
+    result['reading_efficiency'] = result.apply(
         lambda row: row['final_read_time'] / row['dwell_time'] if row['dwell_time'] > 0 else 0.0,
         axis=1
     )
