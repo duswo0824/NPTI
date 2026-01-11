@@ -113,16 +113,16 @@ function renderResultToUI(res) {
     }
 
     // C. 차트 렌더링 로직 (점수 매핑 없이 다이렉트 접근)
-    const axisKeys = ['length', 'article', 'information', 'view'];
+    const axisKeys = [['length','short'], ['article','tale'], ['info','fact'], ['view','negative']];
 
     axisKeys.forEach((key, idx) => {
         // 해당 축(axis)에 맞는 그룹 쌍(예: S/L) 필터링
-        const groupPair = all_types.filter(t => t.npti_group === key);
+        const groupPair = all_types.filter(t => t.npti_group === key[0]);
 
         // key 이름을 활용해 점수에 동적으로 접근 (예: user_npti['length_score'])
-        const scorePercentage = user_npti[`${key}_score`];
+        const scorePercentage = user_npti[`${key[1]}_score`];
 
-        console.log(`[연결 확인] 축: ${key}, 데이터 개수: ${groupPair.length}, 점수: ${scorePercentage}`);
+        console.log(`[연결 확인] 축: ${key[0]}, 데이터 개수: ${groupPair.length}, 점수: ${scorePercentage}`);
 
         if (groupPair.length >= 2 && scorePercentage !== undefined) {
             renderChartItem(key, groupPair, scorePercentage, idx);
