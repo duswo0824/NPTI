@@ -8,7 +8,7 @@ logger = Logger().get_logger(__name__)
 
 DB_USER = "web_user"
 DB_PASSWORD = "pass"
-DB_NAME = "npti"
+DB_NAME = "mynpti"
 DB_HOST = "localhost"
 DB_PORT = 3306
 DATABASE_URL = (f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}")
