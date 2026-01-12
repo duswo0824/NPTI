@@ -6,7 +6,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     let nptiResult = null;          // 뉴스 API 호출에 사용할 NPTI 코드 (예: STFN)
     let nptiSource = null;            // 'user' | 'compose'
 
-    const ITEMS_PER_PAGE = 20;        // 페이지당 뉴스 개수
+    const CONFIG = {ITEMS_PER_PAGE: 20}
+    // const ITEMS_PER_PAGE = 20;        // 페이지당 뉴스 개수
 
     const NPTI_KOR_MAP = {
         L:'긴 기사', S:'짧은 기사',
@@ -223,7 +224,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             renderNewsCards(data.articles);
 
             // 페이지네이션 생성 함수 호출
-            renderPagination(data.total || 0, page);
+            renderPagination(data.total);
 
         } catch (error) {
             console.error('News Load Error:', error);
@@ -264,52 +265,51 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // --- 페이지네이션 ---
-    function renderPagination(totalItems, page) {
-        const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
+    function renderPagination(totalItems) {
+        const totalPages = Math.ceil(totalItems / CONFIG.ITEMS_PER_PAGE); //
+    if (totalPages < 1) return ''; //
 
-        // 기존 pagination 전부 제거
-        document.querySelectorAll('.pagination').forEach(p => p.remove());
-        if (totalPages <= 1) return; // 1페이지뿐이면 생성 안 함
+    let html = `<div class="pagination" style="margin-top:30px; text-align:center;">`;
 
-        const paginationDiv = document.createElement('div');
-        paginationDiv.className = 'pagination';
+    // 현재 페이지에서 5를 빼서 시작점을 잡되, 최소값은 1로 고정
+    let startPage = Math.max(1, currentPage - 5);
 
-        // 공통 버튼 생성기
-        const createBtn = (text, target, disabled) => {
-            const btn = document.createElement('button');
-            btn.innerHTML = text;
-            btn.disabled = disabled;
-            btn.className =
-                'page-num' + (target === page ? ' active' : '');
-            btn.onclick = () => loadCurationNews(currentCategory, target);
+    // 시작점을 기준으로 10개의 버튼을 보여주되, 전체 페이지 수를 넘지 않음
+    let endPage = Math.min(totalPages, startPage + 9);
 
-            return btn;
-        };
-
-        // 처음, 이전 버튼
-        paginationDiv.appendChild(createBtn('《', 1, page === 1));
-        paginationDiv.appendChild(createBtn('〈', page - 1, page === 1));
-
-        // 숫자 버튼 범위 (최대 10까지)
-        const MAX_VISIBLE = 10;
-        let startPage = Math.max(1, page - 2);
-        let endPage = Math.min(totalPages, startPage + MAX_VISIBLE - 1);
-
-        // 숫자 버튼
-        for (let i = startPage; i <= endPage; i++) {
-            paginationDiv.appendChild(
-                createBtn(i, i, false)
-            );
-        }
-
-        // 다음, 끝 버튼
-        paginationDiv.appendChild(createBtn('〉', page + 1, page === totalPages));
-        paginationDiv.appendChild(createBtn('》', totalPages, page === totalPages));
-
-        // HTML의 컨테이너에 삽입
-        const container = document.getElementById('paginationContainer');
-        if (container) container.appendChild(paginationDiv);
-        else if (resultsArea) resultsArea.appendChild(paginationDiv);
+    // [보정] 마지막 페이지 근처에서 버튼이 10개 미만이 되지 않도록 시작점 재조정
+    if (endPage === totalPages) {
+        startPage = Math.max(1, endPage - 9);
     }
+
+    // 처음/이전 버튼
+    html += `<button class="arrow" ${currentPage === 1 ? 'disabled' : ''} data-page="1">《</button>`;
+    html += `<button class="arrow" ${currentPage === 1 ? 'disabled' : ''} data-page="${currentPage - 1}">〈</button>`;
+
+    // 번호 생성
+    for (let i = startPage; i <= endPage; i++) {
+        html += `<button class="page-num ${i === currentPage ? 'active' : ''}" data-page="${i}">${i}</button>`;
+    }
+
+    // 다음/마지막 버튼
+    html += `<button class="arrow" ${currentPage === totalPages ? 'disabled' : ''} data-page="${currentPage + 1}">〉</button>`;
+    html += `<button class="arrow" ${currentPage === totalPages ? 'disabled' : ''} data-page="${totalPages}">》</button>`;
+
+    html += `</div>`;
+
+    const paginationContainer = document.getElementById('paginationContainer');
+    if (paginationContainer) {
+        paginationContainer.innerHTML = html;
+    }
+}
+
+document.addEventListener('click', function (e) {
+    if (e.target.matches('.pagination button[data-page]')) {
+        const page = parseInt(e.target.dataset.page);
+        if (!isNaN(page)) {
+            loadCurationNews(currentCategory, page);
+        }
+    }
+});
 
 }); // DOMContentLoaded 종료
