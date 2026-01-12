@@ -14,10 +14,14 @@ logger = Logger().get_logger(__name__)
 class UserNPTIResponse(BaseModel):
     user_id: str
     npti_code: str
-    length_score: float
-    article_score: float
-    information_score: float
-    view_score: float
+    long_score: float
+    short_score: float
+    content_score: float
+    tale_score: float
+    fact_score: float
+    insight_score: float
+    positive_score: float
+    negative_score: float
     updated_at: datetime
 
 class UserNPTITable(Base):
@@ -25,10 +29,14 @@ class UserNPTITable(Base):
 
     user_id = Column(String, primary_key=True, index=True)
     npti_code = Column(String, primary_key=True)
-    length_score = Column(Float)
-    article_score = Column(Float)
-    information_score = Column(Float)
-    view_score = Column(Float)
+    long_score = Column(Float)
+    short_score = Column(Float)
+    content_score = Column(Float)
+    tale_score = Column(Float)
+    fact_score = Column(Float)
+    insight_score = Column(Float)
+    positive_score = Column(Float)
+    negative_score = Column(Float)
     updated_at = Column(DateTime)
 
 # =========================

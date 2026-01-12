@@ -214,7 +214,7 @@ async def save_test_result(request: Request, payload: dict = Body(...), db: Sess
 
         # NPTI 결과 데이터 가공 (insert_user_npti 호출)
         scores = payload.get("scores", {})
-        updated_at = datetime.now(timezone(timedelta(hours=9))).isoformat(timespec='seconds')
+        updated_at = datetime.now(timezone(timedelta(hours=9))).strftime('%Y-%m-%d %H:%M:%S')
         npti_params = {
             "user_id": user_id,
             "npti_code": payload.get("npti_result"),
@@ -578,11 +578,6 @@ async def get_my_profile(request: Request, db: Session = Depends(get_db)):
 async def get_mypage_page():
     return FileResponse("view/html/mypage.html")
 
-# @app.post("/mypage")
-# async def mypage(req: Request, db: Session = Depends(get_db)):
-#     pass # 실직적으로 처리하는 곳
-
-
 @app.get("/curation", response_class=HTMLResponse)
 def curation_page():
     with open("view/html/curation.html", encoding="utf-8") as f:
@@ -603,6 +598,8 @@ async def get_user_npti(request: Request,db: Session = Depends(get_db)):
         NptiCodeTable, UserNPTITable.npti_code == NptiCodeTable.npti_code
     ).filter(
         UserNPTITable.user_id == user_id
+    ).order_by(
+        UserNPTITable.updated_at.desc()
     ).first()
 
     # 유저는 있으나 NPTI 없음 → 404
@@ -641,7 +638,7 @@ async def get_curated_news(
         db: Session = Depends(get_db)
 ):
 
-    ITEMS_PER_PAGE = 10
+    ITEMS_PER_PAGE = 20  # 한 페이지에 기사 20개
     offset = (page - 1) * ITEMS_PER_PAGE
 
     # DB에서 해당 NPTI_code를 가진 news_id 리스트를 먼저 가져옴
@@ -667,7 +664,7 @@ async def get_curated_news(
 
     if category != "all":
         body["query"]["bool"]["filter"] = [
-            {"term": {"category": category}}
+            {"match": {"category": category}}  #term 쓰려면 ES 매핑 수정해야함
         ]
 
     # 3. 정렬 조건 처리
@@ -835,3 +832,58 @@ def render_breaking():
             id_title_list.append(id_title)
 
     return {"breaking_news": id_title_list, "msg":"데이터 있음"}
+
+@app.get("/render_general")
+def render_general(category:str):
+    news_list = []
+    if category == "전체" or category == 'all':
+        cate_list = ["정치", "경제", "사회", "생활/문화", "IT/과학", "세계", "스포츠","연예","지역"]
+        for category in cate_list:
+            query = {"query": {"match":{"category":category}}, "sort": [{"pubdate": {"order": "desc"}}],
+                     "size": 1, "_source": ["news_id", "title", "content", "img"]}
+            res = search_news_condition(query)
+            src = res["hits"]["hits"][0]["_source"]
+            news_item = {"news_id": src.get("news_id", ""),
+                         "title": src.get("title", ""),
+                         "desc": src.get("content", ""),
+                         "img": src.get("img", ""),
+                         "link": f"/article?news_id={src['news_id']}"}
+            news_list.append(news_item)
+    else :
+        query = {"query": {"match":{"category":category}}, "sort": [{"pubdate": {"order": "desc"}}],
+                 "size": 9, "_source": ["news_id", "title", "content", "img"]}
+        res = search_news_condition(query)
+        for hit in res["hits"]["hits"]:
+            src = hit["_source"]
+            news_item = {"news_id": src.get("news_id", ""),
+                         "title": src.get("title", ""),
+                         "desc": src.get("content", ""),
+                         "img": src.get("img", ""),
+                         "link": f"/article?news_id={src['news_id']}"}
+            news_list.append(news_item)
+    return news_list
+
+@app.get("/render_general_npti")
+def render_general(category:str, npti_code:str, db: Session = Depends(get_db)):
+    sql = text("select news_id from articles_npti where npti_code = :code")
+    params = {"code":npti_code}
+    news_ids = db.execute(sql, params).scalars().fetchall()
+    if not news_ids:
+        return []
+    if category == "전체" or category == 'all':
+        match_query = {"match_all":{}}
+    else :
+        match_query = {"match":{"category":category}}
+    query = {"size": 9,"_source": ["news_id", "title", "content", "img"],"sort": [{"pubdate": {"order": "desc"}}],
+        "query": {"bool": {"must": [match_query],"filter": [{"terms": {"news_id": news_ids}}]}}}
+    res = search_news_condition(query)
+    news_list = []
+    for hit in res["hits"]["hits"]:
+        src = hit["_source"]
+        news_item = {"news_id": src.get("news_id", ""),
+                     "title": src.get("title", ""),
+                     "desc": src.get("content", ""),
+                     "img": src.get("img", ""),
+                     "link": f"/article?news_id={src['news_id']}"}
+        news_list.append(news_item)
+    return news_list

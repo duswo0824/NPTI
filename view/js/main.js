@@ -116,31 +116,51 @@ function getCategoryFromTab(tab) {
 }
 
 /* 뉴스 데이터 생성 (세션 상태에 따라 [NPTI PICK] 또는 [성향] 표시) */
-function getNewsData(category) {
+async function getNewsData(category) {
     const name = CAT_NAMES[category] || '전체';
     const { isLoggedIn, nptiResult } = globalSession;
 
     let typeTag, typeId;
 
     if (isLoggedIn && nptiResult) {
-        typeTag = `[${nptiResult}]`;
-        typeId = nptiResult;
+        let typeTag = `[${nptiResult}]`;
+        let typeId = nptiResult;
+        try {
+            const url = `/render_general_npti?category=${encodeURIComponent(name)}&npti_code=${typeId}`;
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw Error(`status: ${response.status}`);
+            }
+            const newsList = await response.json();
+            if (newsList.length === 0){
+                console.warn("뉴스 데이터가 없습니다.");
+                return [];
+            }
+            return newsList;
+        } catch (error) {
+            console.error("데이터 로드 실패", error);
+            return [];
+        }
     } else {
-        typeTag = `[NPTI PICK]`;
-        typeId = "GUEST";
+        let typeTag = `[NPTI PICK]`;
+        let typeId = "GUEST";
+        try {
+            const url = `/render_general?category=${encodeURIComponent(name)}`;
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw Error(`status: ${response.status}`);
+            }
+            const newsList = await response.json();
+            if (newsList.length === 0){
+                console.warn("뉴스 데이터가 없습니다.");
+                return [];
+            }
+            return newsList;
+        } catch (error) {
+            console.error("데이터 로드 실패", error);
+            return [];
+        }
     }
-
-    const data = [];
-    for (let i = 1; i <= 9; i++) {
-        data.push({
-            id: `${typeId}_slider_${i}`,
-            title: `${typeTag} 성향에 맞는 ${name} 관련 주요 뉴스 헤드라인 예시 ${i}번입니다`,
-            desc: `${name} 분야의 ${i}번째 기사입니다.`,
-            img: '',
-            link: '#'
-        });
-    }
-    return data;
 }
 
 // 5. UI 컴포넌트 (CSS 복구를 위해 HTML 구조 1번으로 롤백)
@@ -208,7 +228,7 @@ async function initTicker() {
 }
 
 /* Slider */
-function initSlider(category) {
+async function initSlider(category) {
     const track = document.getElementById('slider-track');
     const paginationContainer = document.getElementById('pagination-dots');
     const sliderWrapper = document.querySelector('.hero-slider-wrapper');
@@ -224,7 +244,8 @@ function initSlider(category) {
     track.style.transition = 'none';
     track.style.transform = `translateX(0)`;
 
-    const currentData = getNewsData(category);
+    const currentData = await getNewsData(category);
+    if(!currentData || currentData.length === 0) return;
     let currentIndex = 0;
     let isTransitioning = false;
     let dots = [];
@@ -233,10 +254,10 @@ function initSlider(category) {
     currentData.forEach((news, index) => {
         const slide = document.createElement('a');
         slide.className = 'hero-slide';
-        slide.href = `/article?id=${news.id}`;
+        slide.href = `/article?news_id=${news.news_id}`;
         slide.innerHTML = `
             <div class="slide-img-box">
-                ${news.img ? `<img src="${news.img}" alt="뉴스 이미지">` : `<i class="fa-regular fa-image"></i>`}
+                ${news.img ? `<img src="${news.img}" alt="뉴스 이미지" style="height:100%; width:100%; object-fit:contain;">` : `<i class="fa-regular fa-image"></i>`}
             </div>
             <div class="slide-text-box">
                 <h3>${news.title}</h3>
@@ -309,7 +330,7 @@ function initSlider(category) {
 }
 
 /* Grid */
-function initGrid(category) {
+async function initGrid(category) {
     const gridContainer = document.getElementById('news-grid');
     if (!gridContainer) return;
     gridContainer.innerHTML = '';
@@ -317,17 +338,34 @@ function initGrid(category) {
     const type = currentSelection.join('');
     const categoryName = CAT_NAMES[category] || '전체';
 
-    for (let i = 1; i <= 9; i++) {
-        const item = document.createElement('a');
-        item.className = 'grid-item';
-        // grid-thumb, grid-title
-        item.href = `/article?id=${type}_${i}`;
+    try {
+        const url = `/render_general_npti?category=${encodeURIComponent(categoryName)}&npti_code=${type}`;
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw Error(`status: ${response.status}`);
+        }
+        const newsList = await response.json();
+        if (newsList.length === 0){
+            console.warn("뉴스 데이터가 없습니다.");
+            return [];
+        }
+        newsList.forEach((news, index) => {
+            const item = document.createElement('a');
+            item.className = 'grid-item';
+            // grid-thumb, grid-title
+            item.href = `/article?news_id=${news.news_id}`;
 
-        item.innerHTML = `
-            <div class="grid-thumb"><i class="fa-regular fa-image"></i></div>
-            <h4 class="grid-title">[${type}] 성향에 맞는 ${categoryName} 관련 주요 뉴스 헤드라인 예시 ${i}번 입니다.</h4>
-        `;
-        gridContainer.appendChild(item);
+            item.innerHTML = `
+                <div class="grid-thumb">
+                    ${news.img ? `<img src="${news.img}" alt="뉴스 이미지" style="height:100%; width:100%; object-fit:contain;">` : `<i class="fa-regular fa-image"></i>`}
+                </div>
+                <h4 class="grid-title">${news.title}</h4>
+            `;
+            gridContainer.appendChild(item);
+        });
+    } catch (error) {
+        console.error("데이터 로드 실패", error);
+        return [];
     }
 }
 
@@ -411,6 +449,59 @@ function updateBadgeDisplay(index, code) {
 
 // 7. 이벤트 & 모달 / 접근 가드
 function setupGlobalEvents(isLoggedIn, hasNPTI) {
+    /* 접근 가드 + 파라미터 전달 */
+    document.querySelectorAll(
+        'a[href*="curation.html"], a[href*="mypage.html"], a[href*="test.html"], .icon-btn.user, .btn-load-more, .btn-orange, .btn-diagnosis, .btn-bubble'
+    ).forEach(link => {
+        // 인라인 이벤트 제거
+        link.removeAttribute('onclick');
+
+        link.onclick = e => {
+            e.stopPropagation();
+            const href = link.getAttribute('href') || '';
+            const { isLoggedIn, hasNPTI } = globalSession; // 최신 상태 참조
+
+            // 비로그인 가드
+            if (!isLoggedIn) {
+                e.preventDefault();
+                if (href.includes('mypage.html') || link.classList.contains('user')) {
+                    location.href = '/login';
+                } else {
+                    toggleModal('loginGuardModal', true);
+                }
+                return;
+
+            // NPTI 미진단 가드
+            }
+            if (href.includes('curation') && !hasNPTI) {
+                e.preventDefault();
+                toggleModal('hasNPTIGuardModal', true);
+                return;
+            }
+
+            // 로그인 진단 가드
+            if (link.classList.contains('btn-bubble')) {
+                // 기본 href 이동 전에 세션 스토리지 설정
+                // (e.preventDefault를 하지 않으므로 href='/curation'으로 자연스럽게 이동)
+                sessionStorage.removeItem('selectedNPTI');
+                sessionStorage.setItem('nptiSource', 'user');
+                console.log('[Main] 나의 NPTI 뉴스 더보기 클릭');
+            }
+
+            // 더보기 버튼 파라미터 전달
+            if (link.classList.contains('btn-load-more')) {
+                e.preventDefault();
+                location.href = `${href.split('?')[0]}?type=${currentSelection.join('')}`;
+            }
+
+            // 유저 아이콘
+            if (link.classList.contains('user')) {
+                e.preventDefault();
+                location.href = '/mypage';
+            }
+        };
+    });
+
 
     // (1) [상단] 메인 슬라이더 탭 이벤트
     const mainTabs = document.querySelectorAll('.section-pick .nav-tabs a, .npti-pick-header .nav-tabs a');
@@ -425,6 +516,7 @@ function setupGlobalEvents(isLoggedIn, hasNPTI) {
         });
     });
 
+
     // (2) [하단] 뉴스 그리드 탭 이벤트
     const gridTabs = document.querySelectorAll('.section-lcin .nav-tabs a');
     gridTabs.forEach(tab => {
@@ -438,14 +530,30 @@ function setupGlobalEvents(isLoggedIn, hasNPTI) {
         });
     });
 
-    // '이 조합으로 뉴스 보기' 버튼
+    // '조합 보기' 버튼
     const combineBtn = document.getElementById('btn-combine');
     if (combineBtn) {
         combineBtn.addEventListener('click', () => {
             const activeTab = document.querySelector('.section-lcin .nav-tabs a.active');
             const category = activeTab ? getCategoryFromTab(activeTab) : 'all';
             initGrid(category);
-            console.log("조합 확정:", currentSelection.join(''));
+
+            const composedNPTI = currentSelection.join('');
+            console.log("조합 확정:", composedNPTI);
+
+            // sessionStorage.setItem('nptiSource', 'compose');
+            // sessionStorage.setItem('selectedNPTI', composedNPTI);
+        });
+    }
+
+    // '조합' [더보기] 버튼
+    const composeMoreBtn = document.querySelector('.section-lcin .btn-load-more');
+    if (composeMoreBtn) {
+        composeMoreBtn.addEventListener('click', e => {
+            const composedNPTI = currentSelection.join('');
+            sessionStorage.setItem('nptiSource', 'composed');
+            sessionStorage.setItem('selectedNPTI', composedNPTI);
+            console.log('[Main] 조합 NPTI 더보기:', composedNPTI);
         });
     }
 
@@ -471,49 +579,6 @@ function setupGlobalEvents(isLoggedIn, hasNPTI) {
             toggleModal('logoutModal', true);
         };
     }
-
-    /* 접근 가드 + 파라미터 전달 */
-    document.querySelectorAll(
-        'a[href*="curation.html"], a[href*="mypage.html"], a[href*="test.html"], .icon-btn.user, .btn-load-more, .btn-orange, .btn-diagnosis, .btn-bubble'
-    ).forEach(link => {
-        // 인라인 이벤트 제거
-        link.removeAttribute('onclick');
-
-        link.onclick = e => {
-            const href = link.getAttribute('href') || '';
-            const { isLoggedIn, hasNPTI } = globalSession; // 최신 상태 참조
-
-            // 비로그인 가드
-            if (!isLoggedIn) {
-                e.preventDefault();
-                if (href.includes('mypage.html') || link.classList.contains('user')) {
-                    location.href = '/login';
-                } else {
-                    toggleModal('loginGuardModal', true);
-                }
-                return;
-            }
-
-            // NPTI 미진단 가드
-            if (href.includes('curation') && !hasNPTI) {
-                e.preventDefault();
-                toggleModal('hasNPTIGuardModal', true);
-                return;
-            }
-
-            // 더보기 버튼 파라미터 전달
-            if (link.classList.contains('btn-load-more')) {
-                e.preventDefault();
-                location.href = `${href.split('?')[0]}?type=${currentSelection.join('')}`;
-            }
-
-            // 유저 아이콘
-            if (link.classList.contains('user')) {
-                e.preventDefault();
-                location.href = '/mypage';
-            }
-        };
-    });
 
     // 모달 내부 버튼 이벤트
     document.getElementById('closeLoginGuard')?.addEventListener('click', () => toggleModal('loginGuardModal', false));
@@ -561,8 +626,16 @@ function setupGlobalEvents(isLoggedIn, hasNPTI) {
 function updateNPTIButton(hasNPTI) {
     const btn = document.querySelector('.btn-bubble');
     if (!btn) return;
-    btn.innerText = hasNPTI ? '나의 NPTI 뉴스 더보기' : '나의 뉴스 성향 알아보기';
-    btn.href = hasNPTI ? '/view/html/curation.html' : '/test';
-    if(hasNPTI) btn.classList.add('npti-done');
-    else btn.classList.remove('npti-done');
+
+    btn.innerText = hasNPTI
+        ? '나의 NPTI 뉴스 더보기'
+        : '나의 뉴스 성향 알아보기';
+
+    if (hasNPTI) {
+        btn.classList.add('npti-done');
+        btn.href = '/curation';
+    } else {
+        btn.classList.remove('npti-done');
+        btn.href = '/test';
+    }
 }

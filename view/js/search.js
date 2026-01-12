@@ -198,7 +198,7 @@ function updateSearchHeader(count, keyword) {
 // 페이지네이션
 function createPaginationHTML(totalItems) {
     const totalPages = Math.ceil(totalItems / CONFIG.ITEMS_PER_PAGE); //
-    if (totalPages <= 1) return ''; //
+    if (totalPages < 1) return ''; //
 
     let html = `<div class="pagination" style="margin-top:30px; text-align:center;">`;
 
