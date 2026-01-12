@@ -865,25 +865,36 @@ def render_general(category:str):
 
 @app.get("/render_general_npti")
 def render_general(category:str, npti_code:str, db: Session = Depends(get_db)):
+    news_list = []
     sql = text("select news_id from articles_npti where npti_code = :code")
     params = {"code":npti_code}
     news_ids = db.execute(sql, params).scalars().fetchall()
     if not news_ids:
         return []
     if category == "전체" or category == 'all':
-        match_query = {"match_all":{}}
+        cate_list = ["정치", "경제", "사회", "생활/문화", "IT/과학", "세계", "스포츠", "연예", "지역"]
+        for category in cate_list:
+            query = {"size": 1,"_source": ["news_id", "title", "content", "img"],"sort": [{"pubdate": {"order": "desc"}}],
+                    "query": {"bool": {"must": {"match":{"category":category}},"filter": [{"terms": {"news_id": news_ids}}]}}}
+            res = search_news_condition(query)
+            if res["hits"]["hits"]:
+                src = res["hits"]["hits"][0]["_source"]
+                news_item = {"news_id": src.get("news_id", ""),
+                             "title": src.get("title", ""),
+                             "desc": src.get("content", ""),
+                             "img": src.get("img", ""),
+                             "link": f"/article?news_id={src['news_id']}"}
+                news_list.append(news_item)
     else :
-        match_query = {"match":{"category":category}}
-    query = {"size": 9,"_source": ["news_id", "title", "content", "img"],"sort": [{"pubdate": {"order": "desc"}}],
-        "query": {"bool": {"must": [match_query],"filter": [{"terms": {"news_id": news_ids}}]}}}
-    res = search_news_condition(query)
-    news_list = []
-    for hit in res["hits"]["hits"]:
-        src = hit["_source"]
-        news_item = {"news_id": src.get("news_id", ""),
-                     "title": src.get("title", ""),
-                     "desc": src.get("content", ""),
-                     "img": src.get("img", ""),
-                     "link": f"/article?news_id={src['news_id']}"}
-        news_list.append(news_item)
+        query = {"size": 9,"_source": ["news_id", "title", "content", "img"],"sort": [{"pubdate": {"order": "desc"}}],
+            "query": {"bool": {"must": {"match":{"category":category}},"filter": [{"terms": {"news_id": news_ids}}]}}}
+        res = search_news_condition(query)
+        for hit in res["hits"]["hits"]:
+            src = hit["_source"]
+            news_item = {"news_id": src.get("news_id", ""),
+                         "title": src.get("title", ""),
+                         "desc": src.get("content", ""),
+                         "img": src.get("img", ""),
+                         "link": f"/article?news_id={src['news_id']}"}
+            news_list.append(news_item)
     return news_list
