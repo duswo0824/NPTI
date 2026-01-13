@@ -25,7 +25,7 @@ function setupTabNavigation() {
             e.preventDefault();
             const category = tab.dataset.category;
 
-            console.log("[TAB CLICK] 클릭된 탭: " + category);
+            console.log("클릭된 탭: " + category);
 
             // 탭 스타일 변경 (Active 클래스 관리)
             tabs.forEach(t => t.classList.remove('active'));
@@ -42,6 +42,8 @@ function renderContent(category) {
     const contentArea = document.getElementById('adminContentArea');
     if (!contentArea) return;
 
+    console.log("현재 카테고리:", category);
+
     // [1] NPTI 사용자 통계 탭
     if (category === 'stats') {
         contentArea.innerHTML = `
@@ -49,11 +51,11 @@ function renderContent(category) {
                 ${createSection("NPTI별 회원 분포", "npti_main", "npti_sub")} 
                 ${createSection("NPTI 4가지 분류별 회원분포", "", "metrics_sub")}
             </div>`;
-    } else {
-        html = renderNoData();
+    } 
+    // [2] 그 외의 모든 경우 (기사통계 포함)
+    else {
+        contentArea.innerHTML = renderNoData();
     }
-
-    contentArea.innerHTML = `<div class="layout-wrapper animate-fade-in">${html}</div>`;
 }
 
 function renderNoData() {
@@ -140,7 +142,7 @@ function createSection(title, leftField, rightField) {
         </div>`;
 }
 
-// 클릭과 변경 이벤트를 동시에 감지하는 통합 함수
+// [교체] 클릭과 변경 이벤트를 동시에 감지하는 통합 함수
 function handleUIEvents(e) {
     // 일/주/월 토글 버튼 클릭 처리
     const toggleBtn = e.target.closest('.btn-toggle');
