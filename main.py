@@ -40,7 +40,7 @@ logger = Logger().get_logger(__name__)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:5500", "http://localhost:5500"], # 프론트엔드 주소 허용
+    allow_origins=["*"], # 프론트엔드 주소 허용
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
