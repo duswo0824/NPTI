@@ -195,7 +195,7 @@ async function handleTestSubmit(e) {
      long: 100 - finalScores.length, short:finalScores.length,
      content: 100 - finalScores.article, tale: finalScores.article,
      fact : finalScores.information , insight : 100 - finalScores.information,
-     positive: finalScores.view, negative: 100 - finalScores.view}
+     positive: 100 - finalScores.view, negative: finalScores.view}
 
      console.log("최종 npti 점수 ; ", nptiScores)
 
