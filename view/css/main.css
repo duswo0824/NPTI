@@ -20,6 +20,19 @@ body {
     color: var(--black);
     line-height: 1.5;
     letter-spacing: -0.02em;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+html,
+body {
+    height: 100%;
+    /* 전체 높이 기준 확보 */
+}
+
+main {
+    flex: 1;
 }
 
 a {
@@ -865,6 +878,7 @@ footer {
     border-top: 1px solid #eee;
     font-size: 14px;
     background: #fbfbfb;
+    width: 100%;
 }
 
 @keyframes fadeIn {
