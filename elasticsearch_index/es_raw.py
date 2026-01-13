@@ -95,6 +95,7 @@ def tokens(row:dict, kiwi: Kiwi):
 
 def index_sample_row(row:dict): # raw_news 데이터를 indexing하는 함수
     es.index(index=ES_INDEX, id=row["news_id"], document=row, refresh="wait_for")
+    logger.info(f"저장 완료 : {row['news_id']}")
 
 # def delete_news_from_index(id_:str): # raw_news id에 해당하는 데이터를 삭제하는 함수
 #     es.delete(index=ES_INDEX,id=id_, ignore=[404], refresh="wait_for")
@@ -102,7 +103,7 @@ def index_sample_row(row:dict): # raw_news 데이터를 indexing하는 함수
 def search_news_row(id_:str):
     try:
         result = es.exists(index=ES_INDEX, id=id_)
-        logger.info(f"ES 중복 확인 - {id_} : {'기존 -> 중복 스킵' if result else '신규 -> 저장'}")
+        logger.info(f"ES 중복 확인 - {id_} : {'기존 -> 중복 스킵' if result else '신규 -> 크롤링 시작'}")
         return result
     except Exception as e:
         logger.error(f"ES 중복 확인 실패 {id_}: {e}")

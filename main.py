@@ -729,7 +729,7 @@ def update_user_npti(request: Request, db: Session = Depends(get_db)):
             if content :
                 n_word = len(content.split())
                 print(f"news_id : {id} | n_word : {n_word}")
-        interest_score = min(1, reading_efficiency * (math.log(n_word+1) / math.log(501)))
+        interest_score = min(1, reading_efficiency * (math.log(n_word+1) / math.log(501)))*10
         result = db.query(ArticlesNPTI).filter(ArticlesNPTI.news_id == id).first()
         news_length_type = result.length_type
         news_article_type = result.article_type
@@ -777,6 +777,7 @@ def update_user_npti(request: Request, db: Session = Depends(get_db)):
     query = text("SELECT type_nick, type_de FROM npti_code WHERE npti_code = :code")
     description = db.execute(query, {"code": final_user_npti}).fetchone()
     params = {
+        "latest_update_time":latest_update_time,
         "user_id": user_id,
         "npti_code": final_user_npti,
         "type_nick" : description[0],
