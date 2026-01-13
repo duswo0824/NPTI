@@ -78,15 +78,12 @@ const options = {
 function createBoxHeader(title, fieldType, hasToggle) {
     
     const leftContent = hasToggle
-        ? `<div class="toggle-group">
-                <button class="btn-toggle active">일별</button>
-                <button class="btn-toggle">주별</button>
-                <button class="btn-toggle">월별</button>
+        ? `<div class="toggle-group" data-title="${title}">
+                <button type="button" class="btn-toggle active">일별</button>
+                <button type="button" class="btn-toggle">주별</button>
+                <button type="button" class="btn-toggle">월별</button>
            </div>`
-        : `<div class="header-title-group">
-                <h3 class="box-title">${title}</h3>
-                <span class="box-timestamp">2025-12-29 16:02:56 기준</span>
-           </div>`;
+        : "";
 
     const checkboxFields = ['npti_sub', 'metrics_sub'];
     let rightContent = "";
@@ -128,6 +125,10 @@ function createBoxHeader(title, fieldType, hasToggle) {
 // 섹션 생성 헬퍼 함수
 function createSection(title, leftField, rightField) {
     return `
+        <div class="section-outer-header">
+            <h3 class="section-main-title">${title}</h3>
+            <span class="box-timestamp">2025-12-29 16:02:56 기준</span>
+        </div>
         <div class="layout-section">
             <div class="layout-row">
                 <div class="box-container half">
