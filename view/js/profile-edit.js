@@ -72,9 +72,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 // 성별 라디오 버튼
                 const genderRadios = document.getElementsByName('gender');
-                genderRadios.forEach(radio => { 
-                    if (radio.value === userData.gender) radio.checked = true; 
-                }); 
+                let genderValue = '';
+                if (userData.gender === "남자") genderValue = "male";
+                else if (userData.gender === "여자") genderValue = "female";
+                for (let radio of genderRadios) {
+                    if (radio.value === genderValue) {
+                        radio.checked = true;
+                        break;
+                    }
+                } 
 
                 updateButtonState();
             } else {
