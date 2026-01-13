@@ -16,7 +16,8 @@ from database import get_db
 from db_index.db_npti_type import get_all_npti_type, get_npti_type_by_group, npti_type_response, NptiTypeTable
 from db_index.db_npti_code import get_all_npti_codes, get_npti_code_by_code, npti_code_response, NptiCodeTable
 from db_index.db_npti_question import get_all_npti_questions, get_npti_questions_by_axis, npti_question_response
-from db_index.db_user_info import UserCreateRequest, insert_user, authenticate_user, deactivate_user, get_my_page_data
+from db_index.db_user_info import UserCreateRequest, insert_user, authenticate_user, deactivate_user, get_my_page_data, \
+    UserInfo, verify_password, UserUpdate, hash_password
 from db_index.db_user_npti import get_user_npti_info, finalize_score
 from sqlalchemy import text
 from starlette.middleware.sessions import SessionMiddleware
@@ -899,3 +900,66 @@ def render_general(category:str, npti_code:str, db: Session = Depends(get_db)):
                          "link": f"/article?news_id={src['news_id']}"}
             news_list.append(news_item)
     return news_list
+
+@app.get("/profile-edit")
+async def get_profile_edit_page():
+    return FileResponse("view/html/profile-edit.html")
+
+@app.get("/users/profile")
+async def get_user_profile(user_id: str = Query(...), db: Session = Depends(get_db)):
+    """가공된 프로필 데이터를 반환하는 API"""
+    user_data = get_my_page_data(db, user_id)
+    if not user_data:
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+    return user_data
+
+@app.post("/user/verify-password")
+async def verify_user_pw(data:dict, db:Session = Depends(get_db)):
+    user_id = data.get("user_id")
+    current_pw = data.get("current_password")
+
+    user = db.query(UserInfo).filter(UserInfo.user_id == user_id).first()
+    if not user:
+        return {"success":False, "message":"사용자를 찾을 수 없습니다."}
+
+    # DB의 해시된 비번과 입력된 비번 비교
+    if verify_password(current_pw, user.user_pw):
+        return {"success": True, "message": "비밀번호 확인 완료"}
+    else:
+        return {"success": False, "message": "현재 비밀번호와 일치하지 않습니다."}
+
+@app.post("/users/update")
+async def update_user(data: UserUpdate, db: Session = Depends(get_db)):
+    try:
+        user = db.query(UserInfo).filter(UserInfo.user_id == data.user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+
+        # 현재 비밀번호 검증 (sha256 해시 비교)
+        if not verify_password(data.current_password, user.user_pw):
+            raise HTTPException(status_code=400, detail="현재 비밀번호가 일치하지 않습니다.")
+
+        # 데이터 업데이트
+        user.user_name = data.user_name
+        user.user_age = data.user_age
+        user.user_email = data.user_email
+        if data.user_gender:
+            user.user_gender = 1 if "female" in data.user_gender else 0
+
+        try:
+            if data.user_birth:
+                # 문자열 "YYYY-MM-DD"를 파이썬 date 객체로 변환
+                user.user_birth = datetime.strptime(data.user_birth, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="생년월일 형식이 올바르지 않습니다. (YYYY-MM-DD)")
+
+        if data.new_password and data.new_password.strip():
+            user.user_pw = hash_password(data.new_password)
+
+        db.commit()
+        return {"success": True}
+
+    except Exception as e:
+        db.rollback()
+        logger.info(f'유저 프로필 업데이트 중 서버 에러 발생: {str(e)}')
+        raise HTTPException(status_code=500, detail=f"서버 내부 오류: {str(e)}")
