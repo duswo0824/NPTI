@@ -168,3 +168,6 @@ def deactivate_user(db: Session, user_id: str):
     sql = text("UPDATE user_info SET activation = 0 WHERE user_id = :user_id")
     db.execute(sql, {"user_id": user_id})
     db.commit()
+
+def get_user_info(db: Session, user_id: str):
+    return db.query(UserInfo).filter(UserInfo.user_id == user_id).first()

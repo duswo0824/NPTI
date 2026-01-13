@@ -17,7 +17,7 @@ from db_index.db_npti_type import get_all_npti_type, get_npti_type_by_group, npt
 from db_index.db_npti_code import get_all_npti_codes, get_npti_code_by_code, npti_code_response, NptiCodeTable
 from db_index.db_npti_question import get_all_npti_questions, get_npti_questions_by_axis, npti_question_response
 from db_index.db_user_info import UserCreateRequest, insert_user, authenticate_user, deactivate_user, get_my_page_data, \
-    UserInfo, verify_password, UserUpdate, hash_password
+    UserInfo, verify_password, UserUpdate, hash_password, get_user_info
 from db_index.db_user_npti import get_user_npti_info, finalize_score
 from sqlalchemy import text
 from starlette.middleware.sessions import SessionMiddleware
@@ -913,20 +913,18 @@ async def get_user_profile(user_id: str = Query(...), db: Session = Depends(get_
         raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
     return user_data
 
-@app.post("/user/verify-password")
-async def verify_user_pw(data:dict, db:Session = Depends(get_db)):
+
+@app.post("/users/verify-password")
+async def verify_password_check(data:dict, db:Session = Depends(get_db)):
     user_id = data.get("user_id")
     current_pw = data.get("current_password")
 
-    user = db.query(UserInfo).filter(UserInfo.user_id == user_id).first()
-    if not user:
-        return {"success":False, "message":"사용자를 찾을 수 없습니다."}
+    user = get_user_info(db, user_id)
+    if user:
+        if user and user.user_pw and verify_password(current_pw, user.user_pw):
+            return {"success": True, "message": "현재 비밀번호와 일치합니다."}
 
-    # DB의 해시된 비번과 입력된 비번 비교
-    if verify_password(current_pw, user.user_pw):
-        return {"success": True, "message": "비밀번호 확인 완료"}
-    else:
-        return {"success": False, "message": "현재 비밀번호와 일치하지 않습니다."}
+    return {"success": False, "message": "현재 비밀번호와 일치하지 않습니다."}
 
 @app.post("/users/update")
 async def update_user(data: UserUpdate, db: Session = Depends(get_db)):
@@ -937,7 +935,7 @@ async def update_user(data: UserUpdate, db: Session = Depends(get_db)):
 
         # 현재 비밀번호 검증 (sha256 해시 비교)
         if not verify_password(data.current_password, user.user_pw):
-            raise HTTPException(status_code=400, detail="현재 비밀번호가 일치하지 않습니다.")
+            raise HTTPException(status_code=400, detail="현재 비밀번호와 일치하지 않습니다.")
 
         # 데이터 업데이트
         user.user_name = data.user_name
