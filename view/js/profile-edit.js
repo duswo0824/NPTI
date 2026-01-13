@@ -38,7 +38,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 유저 데이터 가져오기(세션)(GET)
     const loadUserData = async () => {
         const loggedInUserId = sessionStorage.getItem("user_id");
-        console.log("세션에서 가져온 id :", loggedInUserId);
+        //console.log("세션에서 가져온 id :", loggedInUserId);
 
         if (!loggedInUserId) {
             alert("로그인 세션이 만료되었습니다. 다시 로그인해주세요.");
@@ -94,63 +94,160 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 모든 필드 검사 및 버튼 활성화 함수
     const updateButtonState = () => {
-        // 1. 모든 인풋 값이 비어있지 않은지 확인 (trim으로 공백 제거)
-        const allFieldsFilled = Object.values(fields).every(el => el.value.trim() !== "");
 
-        // 2. 성별 라디오 버튼이 선택되었는지 확인
-        const genderSelected = document.querySelector('input[name="gender"]:checked') !== null;
+        // 비밀번호 제외 기본 정보만 필수
+        const basicFieldsFilled =
+            fields.username.value.trim() &&
+            fields.birth.value.trim() &&
+            fields.age.value.trim() &&
+            fields.email.value.trim();
 
-        // 3. 비밀번호 상세 조건 확인
-        const isNewPwMatch = fields.newPw.value === fields.newPwCheck.value;
-        const isNewPwNotSame = fields.newPw.value !== fields.currentPw.value;
+        const genderSelected =
+            document.querySelector('input[name="gender"]:checked') !== null;
 
-        // 모든 필수 조건 결합
-        const canSubmit = allFieldsFilled && genderSelected && isPasswordVerified && isNewPwMatch && isNewPwNotSame;
+        // 비밀번호 변경 시도 여부
+        const isPasswordChangeRequested =
+            fields.currentPw.value ||
+            fields.newPw.value ||
+            fields.newPwCheck.value;
+
+        const isNewPwMatch =
+            fields.newPw.value === fields.newPwCheck.value;
+
+        const isNewPwNotSame =
+            fields.newPw.value !== fields.currentPw.value;
+
+        const canSubmit =
+            basicFieldsFilled &&
+            genderSelected &&
+            (
+                !isPasswordChangeRequested ||
+                (isPasswordVerified && isNewPwMatch && isNewPwNotSame)
+            );
+
         btnSave.disabled = !canSubmit;
     };
 
-    // 현재 비밀번호 실시간 서버 확인
-    fields.currentPw.addEventListener('change', async () => {
-        const loggedInUserId = sessionStorage.getItem("user_id");
-        const passwordToVerify = fields.currentPw.value;
+    // // 현재 비밀번호 실시간 서버 확인
+    // fields.currentPw.addEventListener('change', async () => {
+    //     const loggedInUserId = sessionStorage.getItem("user_id");
+    //     const passwordToVerify = fields.currentPw.value;
 
-        if (passwordToVerify.length === 0) return;
+    //     if (passwordToVerify.length === 0) return;
 
-        try {
-            const response = await fetch(`/users/verify-password`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    user_id: loggedInUserId,
-                    current_password: passwordToVerify
-                })
-            });
+    //     try {
+    //         const response = await fetch(`/users/verify-password`, {
+    //             method: 'POST',
+    //             headers: { 'Content-Type': 'application/json' },
+    //             body: JSON.stringify({
+    //                 user_id: loggedInUserId,
+    //                 current_password: passwordToVerify
+    //             })
+    //         });
 
-            const result = await response.json();
-            console.log("서버 응답 결과:", result);
+    //         const result = await response.json();
+    //         console.log("서버 응답 결과:", result);
 
-            if (result.success === true || result.success === "true") {
-                currentMsg.innerText = "비밀번호 확인 완료";
-                currentMsg.className = "status-text success visible";
-                isPasswordVerified = true; // 검증 성공 상태 저장
-            } else {
-                currentMsg.innerText = "현재 비밀번호와 일치하지 않습니다.";
-                currentMsg.className = "status-text error visible";
-                isPasswordVerified = false;
-            }
-            updateButtonState(); // 버튼 활성화 상태 다시 계산
-        } catch (error) {
-            console.error("비밀번호 검증 오류:", error);
-        }
-    });
+    //         if (result.success === true || result.success === "true") {
+    //             currentMsg.innerText = "비밀번호 확인 완료";
+    //             currentMsg.className = "status-text success visible";
+    //             isPasswordVerified = true; // 검증 성공 상태 저장
+    //         } else {
+    //             currentMsg.innerText = "현재 비밀번호와 일치하지 않습니다.";
+    //             currentMsg.className = "status-text error visible";
+    //             isPasswordVerified = false;
+    //         }
+    //         updateButtonState(); // 버튼 활성화 상태 다시 계산
+    //     } catch (error) {
+    //         console.error("비밀번호 검증 오류:", error);
+    //     }
+    // });
 
-    fields.currentPw.addEventListener('input', () => {
-        if (fields.currentPw.value.length === 0) {
+    fields.currentPw.addEventListener('input', async () => {
+
+        const password = fields.currentPw.value;
+        const userId = sessionStorage.getItem("user_id");
+
+        if (!password) {
+            isPasswordVerified = false;
             currentMsg.classList.remove('visible');
-            isPasswordVerified = false; // 검증 상태 리셋
-            updateButtonState(); // 즉시 버튼 비활성화
+            updateButtonState();
+            return;
         }
+
+        const response = await fetch(`/users/verify-password`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                user_id: userId,
+                current_password: password
+            })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            currentMsg.innerText = "비밀번호 확인 완료";
+            currentMsg.className = "status-text success visible";
+            isPasswordVerified = true;
+        } else {
+            currentMsg.innerText = "현재 비밀번호와 일치하지 않습니다.";
+            currentMsg.className = "status-text error visible";
+            isPasswordVerified = false;
+        }
+
+        updateButtonState();
     });
+
+    // 새 비밀번호 매칭
+    const validateMatch = () => {
+        if (fields.newPw.value && fields.newPwCheck.value) {
+            checkMsg.classList.add('visible');
+            checkMsg.innerText =
+                fields.newPw.value === fields.newPwCheck.value
+                    ? "비밀번호가 일치합니다."
+                    : "비밀번호가 일치하지 않습니다.";
+        } else {
+            checkMsg.classList.remove('visible');
+        }
+        updateButtonState();
+    };
+
+    fields.newPw.addEventListener('input', validateMatch);
+    fields.newPwCheck.addEventListener('input', validateMatch);
+    
+
+    /* 3. 각 입력창에 이벤트 리스너 등록 (실시간 체크) */
+
+    // 모든 일반 인풋/날짜/숫자 요소에 input 이벤트 추가
+    Object.values(fields).forEach(field =>
+        field.addEventListener('input', updateButtonState)
+    );
+
+    // 성별 라디오 버튼에 change 이벤트 추가
+    document.getElementsByName('gender').forEach(radio => {
+        radio.addEventListener('change', updateButtonState);
+    });
+
+    document
+        .querySelectorAll('input[name="gender"]')
+        .forEach(radio =>
+            radio.addEventListener('change', updateButtonState)
+        );
+
+    /* 5. X 버튼 (Clear) 클릭 시에도 버튼 상태 갱신 */
+    document.querySelectorAll('.btn-clear').forEach(btn => {
+        btn.addEventListener('click', function () {
+            const inputEl = this.previousElementSibling;
+            if (inputEl) {
+                inputEl.value = '';
+                const msgEl = this.closest('.form-group').querySelector('.status-text');
+                if (msgEl) msgEl.classList.remove('visible');
+                updateButtonState();
+            }
+        });
+    });
+
 
     // 수정된 유저 데이터 저장(POST)
     const saveUserData = async () => {
@@ -184,55 +281,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             console.error("저장 중 오류 발생:", error);
         }
-    };    
-
-    /* 3. 각 입력창에 이벤트 리스너 등록 (실시간 체크) */
-
-    // 모든 일반 인풋/날짜/숫자 요소에 input 이벤트 추가
-    Object.values(fields).forEach(field => {
-        field.addEventListener('input', () => {
-            updateButtonState();
-        });
-    });
-
-    // 성별 라디오 버튼에 change 이벤트 추가
-    document.getElementsByName('gender').forEach(radio => {
-        radio.addEventListener('change', updateButtonState);
-    });
-
-    // 새 비밀번호 매칭 시각화
-    const validateMatch = () => {
-        if (fields.newPw.value && fields.newPwCheck.value) {
-            checkMsg.classList.add('visible');
-            if (fields.newPw.value === fields.newPwCheck.value) {
-                checkMsg.innerText = "비밀번호가 일치합니다.";
-                checkMsg.className = "status-text success visible";
-            } else {
-                checkMsg.innerText = "비밀번호가 일치하지 않습니다.";
-                checkMsg.className = "status-text error visible";
-            }
-        } else {
-            checkMsg.classList.remove('visible');
-        }
-        updateButtonState();
     };
-
-    fields.newPw.addEventListener('input', validateMatch);
-    fields.newPwCheck.addEventListener('input', validateMatch);
-
-
-    /* 5. X 버튼 (Clear) 클릭 시에도 버튼 상태 갱신 */
-    document.querySelectorAll('.btn-clear').forEach(btn => {
-        btn.addEventListener('click', function () {
-            const inputEl = this.previousElementSibling;
-            if (inputEl) {
-                inputEl.value = '';
-                const msgEl = this.closest('.form-group').querySelector('.status-text');
-                if (msgEl) msgEl.classList.remove('visible');
-                updateButtonState();
-            }
-        });
-    });
 
     /* 모달 제어 로직 */
     // 1. 완료 버튼(submit) 클릭 시 팝업 띄우기
