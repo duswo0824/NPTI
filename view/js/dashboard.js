@@ -49,7 +49,21 @@ function renderContent(category) {
                 ${createSection("NPTI별 회원 분포", "npti_main", "npti_sub")} 
                 ${createSection("NPTI 4가지 분류별 회원분포", "", "metrics_sub")}
             </div>`;
-    } 
+    } else {
+        html = renderNoData();
+    }
+
+    contentArea.innerHTML = `<div class="layout-wrapper animate-fade-in">${html}</div>`;
+}
+
+function renderNoData() {
+    return `
+        <div class="no-data-container">
+            <div class="no-data-box">
+                <p>데이터가 없습니다.</p>
+            </div>
+        </div>
+    `;
 }
 
 // 필드 옵션 생성
@@ -126,7 +140,7 @@ function createSection(title, leftField, rightField) {
         </div>`;
 }
 
-// [교체] 클릭과 변경 이벤트를 동시에 감지하는 통합 함수
+// 클릭과 변경 이벤트를 동시에 감지하는 통합 함수
 function handleUIEvents(e) {
     // 일/주/월 토글 버튼 클릭 처리
     const toggleBtn = e.target.closest('.btn-toggle');
