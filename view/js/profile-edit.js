@@ -10,7 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // };
 
     // FastAPI 서버 주소 (배포 환경에 따라 수정)
-    const API_BASE_URL = "http://127.0.0.1:8000";
+    //const API_BASE_URL = "http://127.0.0.1:8000";
     const btnSave = document.querySelector('.btn-save');
     btnSave.disabled = true;
 
@@ -47,7 +47,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         try {
             // FastAPI 엔드포인트에 userId를 쿼리 파라미터나 경로로 전달
-            const response = await fetch(`${API_BASE_URL}/users/profile?user_id=${loggedInUserId}`, {
+            const response = await fetch(`/users/profile?user_id=${loggedInUserId}`, {
                 method: 'GET',
                 headers: {
                     'Accept': 'application/json'
@@ -117,7 +117,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (passwordToVerify.length === 0) return;
 
         try {
-            const response = await fetch(`${API_BASE_URL}/users/verify-password`, {
+            const response = await fetch(`/users/verify-password`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -170,7 +170,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // 실제 서버 전송 로직
         try {
-            const response = await fetch(`${API_BASE_URL}/users/update`, {
+            const response = await fetch(`/users/update`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(updatedData)
