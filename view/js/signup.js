@@ -77,7 +77,7 @@ function initSignupUI(state) {
    ========================= */
 // 이메일 형식 검증
 function isValidEmail(email) {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    return /^[^\s@]+@[^\s@]+\.(com|net|org|kr|co\.kr)$/i.test(email);
 }
 
 // 회원가입 버튼 활성/비활성 판단
