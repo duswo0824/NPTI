@@ -1,15 +1,27 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import text, Column, String, Integer, SmallInteger
 import hashlib
 from pydantic import BaseModel, EmailStr
 from datetime import date
 from logger import Logger
+from database import Base
 
 logger = Logger().get_logger(__name__)
 
 # =========================
 # Pydantic Model
 # =========================
+class UserInfo(Base):
+    __tablename__ = "user_info"
+    user_id = Column(String(50), primary_key=True)
+    user_pw = Column(String(255))
+    user_name = Column(String(50))
+    user_birth = Column(String(20))
+    user_age = Column(Integer)
+    user_gender = Column(SmallInteger) # 0: 남자, 1: 여자
+    user_email = Column(String(100))
+    activation = Column(SmallInteger, default=1)
+
 class UserCreateRequest(BaseModel):
     user_id: str
     user_pw: str
@@ -17,6 +29,17 @@ class UserCreateRequest(BaseModel):
     user_birth: date
     user_age: int
     user_gender: bool
+    user_email: EmailStr
+    activation: bool = True
+
+class UserUpdate(BaseModel):
+    user_id: str
+    user_name: str
+    current_password: str  # 사용자가 입력한 현재 비번
+    new_password: str      # 새롭게 바꿀 비번
+    user_birth: str
+    user_age: int
+    user_gender: str
     user_email: EmailStr
     activation: bool = True
 

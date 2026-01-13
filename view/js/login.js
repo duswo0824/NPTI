@@ -190,6 +190,7 @@ function bindLoginEvents(state) {
                     `${state.idInput.value}님 환영합니다!`,
                     async () => {
                         try {
+                            sessionStorage.setItem("user_id", state.idInput.value);
                             const check = await fetch('/auth/me', {
                                 credentials: 'include'
                             });
