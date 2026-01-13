@@ -25,6 +25,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         const updateBtn = document.getElementById('goCurationBtn');
         const tooltip = document.getElementById('nptiUpdateTooltip');
 
+        const latest_update_time = npti.updated_at;
+
+        if (latest_update_time) {
+            let now = new Date();
+            let lastUpdateDate = new Date(latest_update_time.replace(" ","T"));
+            let diff_update_time = now - lastUpdateDate;
+            const hours24InMs = 24*60*60*1000
+
+            if (diff_update_time < hours24InMs) {
+                applyUpdateLock();
+                if (tooltip) tooltip.style.display = 'none';
+                return;
+            }
+        }
+
         // 업데이트 버튼 클릭 이벤트 연결
         if (updateBtn) {
             updateBtn.onclick = () => runUpdateSimulation();
@@ -36,12 +51,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             updateBtn.addEventListener('mouseleave', () => {
                 if (tooltip) tooltip.style.display = 'none';
             });
-        }
-
-        // 시간 제한 확인
-        const lastUpdate = localStorage.getItem('lastNptiUpdate');
-        if (lastUpdate && (new Date().getTime() - lastUpdate < 3000)) {
-            applyUpdateLock();
         }
     } else {
         showEmptyNpti();
@@ -113,10 +122,12 @@ function renderNptiContent(npti) {
     const resSection = document.getElementById('nptiResultSection');
     if (resSection) resSection.style.display = 'block';
 
+    document.getElementById('resUserName').innerText = npti.user_id;
     document.getElementById('nptiCode').innerText = npti.npti_code;
-    document.getElementById('nptiName').innerText = `"${npti.type_nick}"`;
-    document.getElementById('resultSummary').innerHTML = npti.type_de;
-
+    document.getElementById('nptiName').innerText = npti.type_nick;
+    const rawText = npti.type_de;
+    const fomattedText = rawText.split('.').map(s => s.trim()).filter(Boolean).join('.<br/>');
+    document.getElementById('resultSummary').innerHTML = fomattedText;
     renderBarChart('barLength', npti.long_score, "L", "S", 'track-Length');
     renderBarChart('barArticle', npti.content_score, 'C', 'T', 'track-Article');
     renderBarChart('barInfo', npti.insight_score, "I", "F", 'track-Info');
@@ -262,17 +273,6 @@ async function runUpdateSimulation() {
             summary.appendChild(msg);
             setTimeout(() => msg.remove(), 3000);
         }
-
-        // 3. 락 걸기 및 시간 저장
-        localStorage.setItem('lastNptiUpdate', new Date().getTime());
-        applyUpdateLock();
-        if (tooltip) tooltip.style.display = 'none';
-
     }
-
-
-
-
-
 }
 
