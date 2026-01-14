@@ -222,6 +222,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             // 실제 뉴스 카드 그리기 함수 호출
             renderNewsCards(data.articles);
+            console.log(data.sort)
 
             // 페이지네이션 생성 함수 호출
             renderPagination(data.total);
