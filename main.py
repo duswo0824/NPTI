@@ -399,7 +399,12 @@ def npti_question_by_axis(axis: str = Query(...), db: Session = Depends(get_db))
 
 # 가입용
 @app.get("/signup")
-async def get_signup_page():
+async def get_signup_page(request: Request):
+    is_logged_in = request.session.get("isLoggedIn")
+    print("is_logged_in", is_logged_in)
+    if not is_logged_in:
+        print("/login으로 이동")
+        return RedirectResponse(url="/")
     # 사용자가 /signup 주소로 들어오면 html 파일을 보여줍니다.
     return FileResponse("view/html/signup.html")
 
@@ -961,3 +966,258 @@ async def update_user(data: UserUpdate, db: Session = Depends(get_db)):
         db.rollback()
         logger.info(f'유저 프로필 업데이트 중 서버 에러 발생: {str(e)}')
         raise HTTPException(status_code=500, detail=f"서버 내부 오류: {str(e)}")
+
+@app.get('/check_admin')
+def check_admin(request:Request, db: Session = Depends(get_db)):
+    user_id = request.session.get("user_id")
+    param = {"user_id": user_id}
+    sql = text("select admin from user_info where user_id = :user_id")
+    result = db.execute(sql, param).fetchone()
+    return result.admin
+
+
+@app.get("/dashboard")
+def dashboard():
+    return FileResponse("view/html/dashboard.html")
+
+
+@app.get("/members_statistics")
+def members_statistics(db: Session = Depends(get_db)):
+    print('데이터 추출 시작')
+    # [Helper 함수] DB 결과를 딕셔너리 리스트로 변환
+    def rows_to_dict(result_proxy):
+        return [dict(row._asdict()) for row in result_proxy]
+
+    # [Helper 함수] 단일 행(1 row) 결과를 딕셔너리로 변환
+    def row_to_dict(row):
+        return dict(row._asdict()) if row else {}
+
+    try:
+        # =========================================================
+        # 1. NPTI 회원 분포 (Pie Chart용)
+        # =========================================================
+
+        # 1-1) NPTI 코드별 비율
+        sql1_1 = text("""
+            SELECT npti_code, COUNT(*) as count 
+            FROM user_npti
+            WHERE (user_id, updated_at) IN (
+                SELECT user_id, MAX(updated_at) 
+                FROM user_npti 
+                GROUP BY user_id
+            )
+            GROUP BY npti_code 
+            ORDER BY count DESC;
+        """)
+        result1_1 = rows_to_dict(db.execute(sql1_1).fetchall())
+        print('result1_1 완료')
+
+
+        # 1-2) 연령대별 비율
+        sql1_2 = text("""
+            SELECT 
+                CASE 
+                    WHEN user_age < 20 THEN '10대 이하' 
+                    WHEN user_age >= 20 AND user_age < 30 THEN '20대'
+                    WHEN user_age >= 30 AND user_age < 40 THEN '30대' 
+                    WHEN user_age >= 40 AND user_age < 50 THEN '40대'
+                    WHEN user_age >= 50 AND user_age < 60 THEN '50대' 
+                    ELSE '60대 이상' 
+                END AS age_group, 
+                COUNT(*) AS count
+            FROM user_info 
+            GROUP BY age_group 
+            ORDER BY age_group;
+        """)
+        result1_2 = rows_to_dict(db.execute(sql1_2).fetchall())
+        print('result1_2 완료')
+
+        # 1-3) 성별 비율
+        sql1_3 = text("""SELECT user_gender, COUNT(*) as count FROM user_info GROUP BY user_gender;""")
+        result1_3 = rows_to_dict(db.execute(sql1_3).fetchall())
+        print('result1_3 완료')
+
+        # =========================================================
+        # 2. NPTI 코드별 변화 추이 (Line Graph용)
+        # =========================================================
+
+        # 2-1) 일별
+        sql2_1 = text("""
+            WITH DailySnapshot AS (
+                SELECT npti_code, DATE_FORMAT(updated_at, '%Y-%m-%d') AS date_period,
+                    ROW_NUMBER() OVER (PARTITION BY user_id, DATE_FORMAT(updated_at, '%Y-%m-%d') ORDER BY updated_at DESC) as rn
+                FROM user_npti
+            )
+            SELECT date_period, npti_code, COUNT(*) as user_count
+            FROM DailySnapshot WHERE rn = 1 GROUP BY date_period, npti_code ORDER BY date_period ASC;
+        """)
+        result2_1 = rows_to_dict(db.execute(sql2_1).fetchall())
+        print('result2_1 완료')
+
+        # 2-2) 주별
+        sql2_2 = text("""
+            WITH WeeklySnapshot AS (
+                SELECT npti_code, DATE_FORMAT(DATE_SUB(updated_at, INTERVAL WEEKDAY(updated_at) DAY), '%Y-%m-%d') AS date_period,
+                    ROW_NUMBER() OVER (PARTITION BY user_id, DATE_FORMAT(DATE_SUB(updated_at, INTERVAL WEEKDAY(updated_at) DAY), '%Y-%m-%d') ORDER BY updated_at DESC) as rn
+                FROM user_npti
+            )
+            SELECT date_period, npti_code, COUNT(*) as user_count
+            FROM WeeklySnapshot WHERE rn = 1 GROUP BY date_period, npti_code ORDER BY date_period ASC;
+        """)
+        result2_2 = rows_to_dict(db.execute(sql2_2).fetchall())
+        print('result2_2 완료')
+
+        # 2-3) 월별
+        sql2_3 = text("""
+            WITH MonthlySnapshot AS (
+                SELECT npti_code, DATE_FORMAT(updated_at, '%Y-%m') AS date_period,
+                    ROW_NUMBER() OVER (PARTITION BY user_id, DATE_FORMAT(updated_at, '%Y-%m') ORDER BY updated_at DESC) as rn
+                FROM user_npti
+            )
+            SELECT date_period, npti_code, COUNT(*) as user_count
+            FROM MonthlySnapshot WHERE rn = 1 GROUP BY date_period, npti_code ORDER BY date_period ASC;
+        """)
+        result2_3 = rows_to_dict(db.execute(sql2_3).fetchall())
+        print('result2_3 완료')
+
+        # =========================================================
+        # 3. NPTI 8개 속성별 분포 (Bar Chart용)
+        # =========================================================
+
+        sql3 = text("""
+            SELECT 
+                COUNT(CASE WHEN B.length_type = 'L' THEN 1 END) AS L_count,
+                COUNT(CASE WHEN B.length_type = 'S' THEN 1 END) AS S_count,
+                COUNT(CASE WHEN B.article_type = 'C' THEN 1 END) AS C_count,
+                COUNT(CASE WHEN B.article_type = 'T' THEN 1 END) AS T_count,
+                COUNT(CASE WHEN B.info_type = 'I' THEN 1 END) AS I_count,
+                COUNT(CASE WHEN B.info_type = 'F' THEN 1 END) AS F_count,
+                COUNT(CASE WHEN B.view_type = 'P' THEN 1 END) AS P_count,
+                COUNT(CASE WHEN B.view_type = 'N' THEN 1 END) AS N_count
+            FROM (
+                SELECT npti_code FROM (
+                    SELECT npti_code, ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY updated_at DESC) as rn
+                    FROM user_npti
+                ) latest WHERE rn = 1
+            ) A
+            JOIN npti_code B ON A.npti_code = B.npti_code;
+        """)
+        result3 = row_to_dict(db.execute(sql3).fetchone())
+        print('result3 완료')
+
+        # =========================================================
+        # 4. NPTI 8개 속성별 변화 추이 (Line Graph용)
+        # =========================================================
+
+        # 4-1) 일별
+        sql4_1 = text("""
+            WITH DailySnapshot AS (
+                SELECT npti_code, DATE_FORMAT(updated_at, '%Y-%m-%d') AS date_period,
+                    ROW_NUMBER() OVER (PARTITION BY user_id, DATE_FORMAT(updated_at, '%Y-%m-%d') ORDER BY updated_at DESC) as rn
+                FROM user_npti
+            )
+            SELECT D.date_period,
+                COUNT(CASE WHEN C.length_type = 'L' THEN 1 END) AS L_count,
+                COUNT(CASE WHEN C.length_type = 'S' THEN 1 END) AS S_count,
+                COUNT(CASE WHEN C.article_type = 'C' THEN 1 END) AS C_count,
+                COUNT(CASE WHEN C.article_type = 'T' THEN 1 END) AS T_count,
+                COUNT(CASE WHEN C.info_type = 'I' THEN 1 END) AS I_count,
+                COUNT(CASE WHEN C.info_type = 'F' THEN 1 END) AS F_count,
+                COUNT(CASE WHEN C.view_type = 'P' THEN 1 END) AS P_count,
+                COUNT(CASE WHEN C.view_type = 'N' THEN 1 END) AS N_count
+            FROM DailySnapshot D JOIN npti_code C ON D.npti_code = C.npti_code
+            WHERE D.rn = 1 GROUP BY D.date_period ORDER BY D.date_period ASC;
+        """)
+        result4_1 = rows_to_dict(db.execute(sql4_1).fetchall())
+        print('result4_1 완료')
+
+        # 4-2) 주별
+        sql4_2 = text("""
+            WITH WeeklySnapshot AS (
+                SELECT npti_code, DATE_FORMAT(DATE_SUB(updated_at, INTERVAL WEEKDAY(updated_at) DAY), '%Y-%m-%d') AS date_period,
+                    ROW_NUMBER() OVER (PARTITION BY user_id, DATE_FORMAT(DATE_SUB(updated_at, INTERVAL WEEKDAY(updated_at) DAY), '%Y-%m-%d') ORDER BY updated_at DESC) as rn
+                FROM user_npti
+            )
+            SELECT W.date_period,
+                COUNT(CASE WHEN C.length_type = 'L' THEN 1 END) AS L_count,
+                COUNT(CASE WHEN C.length_type = 'S' THEN 1 END) AS S_count,
+                COUNT(CASE WHEN C.article_type = 'C' THEN 1 END) AS C_count,
+                COUNT(CASE WHEN C.article_type = 'T' THEN 1 END) AS T_count,
+                COUNT(CASE WHEN C.info_type = 'I' THEN 1 END) AS I_count,
+                COUNT(CASE WHEN C.info_type = 'F' THEN 1 END) AS F_count,
+                COUNT(CASE WHEN C.view_type = 'P' THEN 1 END) AS P_count,
+                COUNT(CASE WHEN C.view_type = 'N' THEN 1 END) AS N_count
+            FROM WeeklySnapshot W JOIN npti_code C ON W.npti_code = C.npti_code
+            WHERE W.rn = 1 GROUP BY W.date_period ORDER BY W.date_period ASC;
+        """)
+        result4_2 = rows_to_dict(db.execute(sql4_2).fetchall())
+        print('result4_2 완료')
+
+        # 4-3) 월별
+        sql4_3 = text("""
+            WITH MonthlySnapshot AS (
+                SELECT npti_code, DATE_FORMAT(updated_at, '%Y-%m') AS date_period,
+                    ROW_NUMBER() OVER (PARTITION BY user_id, DATE_FORMAT(updated_at, '%Y-%m') ORDER BY updated_at DESC) as rn
+                FROM user_npti
+            )
+            SELECT M.date_period,
+                COUNT(CASE WHEN C.length_type = 'L' THEN 1 END) AS L_count,
+                COUNT(CASE WHEN C.length_type = 'S' THEN 1 END) AS S_count,
+                COUNT(CASE WHEN C.article_type = 'C' THEN 1 END) AS C_count,
+                COUNT(CASE WHEN C.article_type = 'T' THEN 1 END) AS T_count,
+                COUNT(CASE WHEN C.info_type = 'I' THEN 1 END) AS I_count,
+                COUNT(CASE WHEN C.info_type = 'F' THEN 1 END) AS F_count,
+                COUNT(CASE WHEN C.view_type = 'P' THEN 1 END) AS P_count,
+                COUNT(CASE WHEN C.view_type = 'N' THEN 1 END) AS N_count
+            FROM MonthlySnapshot M JOIN npti_code C ON M.npti_code = C.npti_code
+            WHERE M.rn = 1 GROUP BY M.date_period ORDER BY M.date_period ASC;
+        """)
+        result4_3 = rows_to_dict(db.execute(sql4_3).fetchall())
+        print('result4_3 완료')
+
+        # =========================================================
+        # 5. 최종 리턴 (JSON)
+        # =========================================================
+        return {
+            "result1_npti_code": result1_1,
+            "result1_age": result1_2,
+            "result1_gender": result1_3,
+
+            "result2_day": result2_1,
+            "result2_week": result2_2,
+            "result2_month": result2_3,
+
+            "result3_npti_type": result3,
+
+            "result4_day": result4_1,
+            "result4_week": result4_2,
+            "result4_month": result4_3
+        }
+
+    except Exception as e:
+        print(f"Error fetching statistics: {e}")
+        return JSONResponse(status_code=500, content={"message": "통계 데이터를 불러오는 중 오류가 발생했습니다."})
+
+
+@app.get("/articles_statistics")
+def articles_statistics():
+    # 1. category별 수집 기사 추이(es)
+    # 4-1) 필드 : 일
+    # 4-2) 필드 : 주
+    # 4-3) 필드 : 월
+
+    # 2. NPTI별 수집 기사 추이 - linear graph
+    # 4-1) 필드 : 일
+    # 4-2) 필드 : 주
+    # 4-3) 필드 : 월
+
+    # 3. NPTI 기준별 수집 기사 추이 - bar chart
+    # 4-1) 필드 : 일
+    # 4-2) 필드 : 주
+    # 4-3) 필드 : 월
+
+
+
+
+
+    return None
