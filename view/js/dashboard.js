@@ -116,7 +116,7 @@ function createSection(title, leftField, rightField, isToggleLeft = false) {
     return `
         <div class="section-outer-header">
             <h3 class="section-main-title">${title}</h3>
-            <span class="box-timestamp">2025-12-29 16:02:56 기준</span>
+            <span class="box-timestamp">${globalStatsData.time_now}</span>
         </div>
         <div class="layout-section">
             <div class="layout-row">
@@ -130,7 +130,7 @@ const options = {
     'npti_main': ['NPTI', '나이', '성별'],
     'npti_sub': ['STFP', 'STFN', 'STIP', 'STIN', 'SCFP', 'SCFN', 'SCIP', 'SCIN', 'LTFP', 'LTFN', 'LTIP', 'LTIN', 'LCFP', 'LCFN', 'LCIP', 'LCIN'],
     'metrics_main' : ['속성별 분포'],
-    'metrics_sub': ['Short', 'Long', 'Content', 'Tale', 'Fact', 'Information', 'Positive', 'Negative'],
+    'metrics_sub': ['Short', 'Long', 'Content', 'Tale', 'Fact', 'Insight', 'Positive', 'Negative'],
     'news_categories': ['정치', '경제', '사회', '생활/문화', 'IT/과학', '세계', '스포츠', '연예', '지역'],
     'metrics_short': ['S/L', 'C/T', 'F/I', 'P/N']
 };
@@ -398,6 +398,12 @@ function createLineChartNPTI(canvasId, rawData) {
     if (existingChart) existingChart.destroy();
 
     const dates = [...new Set(rawData.map(item => item.date_period))];
+    const chartLabels = dates.map(dateStr => {
+        if (dateStr.includes('\n')) {
+            return dateStr.split('\n');
+        }
+        return dateStr;
+    });
     const codes = [...new Set(rawData.map(item => item.npti_code))];
 
     // [중요] 날짜별 전체 합계(Total Count) 미리 계산
@@ -432,7 +438,7 @@ function createLineChartNPTI(canvasId, rawData) {
 
     chartInstances[canvasId] = new Chart(ctx, {
         type: 'line',
-        data: { labels: dates, datasets: datasets },
+        data: { labels: chartLabels, datasets: datasets },
         options: {
             responsive: true,
             maintainAspectRatio: false,
@@ -468,6 +474,12 @@ function createLineChartType(canvasId, rawData) {
     if (existingChart) existingChart.destroy();
 
     const dates = rawData.map(d => d.date_period);
+    const chartLabels = dates.map(dateStr => {
+        if (dateStr.includes('\n')) {
+            return dateStr.split('\n');
+        }
+        return dateStr;
+    });
 
     // 각 날짜별로 Type 합계 구하기 (보통 L+S = 전체, C+T = 전체이므로 L+S를 기준으로 함)
     // rawData row: {date_period: "...", L_count: 10, S_count: 5...}
@@ -507,7 +519,7 @@ function createLineChartType(canvasId, rawData) {
 
     chartInstances[canvasId] = new Chart(ctx, {
         type: 'line',
-        data: { labels: dates, datasets: datasets },
+        data: { labels: chartLabels, datasets: datasets },
         options: {
             responsive: true,
             maintainAspectRatio: false,
