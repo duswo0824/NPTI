@@ -9,6 +9,12 @@ document.addEventListener('DOMContentLoaded', () => {
     //     email: "Honggildong@email.com"
     // };
 
+    // 이메일 유효성 검사 함수 추가
+    const isValidEmail = (email) => {
+        const pattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        return pattern.test(email);
+    };
+
     // FastAPI 서버 주소 (배포 환경에 따라 수정)
     //const API_BASE_URL = "http://127.0.0.1:8000";
     const btnSave = document.querySelector('.btn-save');
@@ -32,6 +38,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const editModal = document.getElementById('editModal');
     const confirmEdit = document.getElementById('confirmEdit');
     const closeEdit = document.getElementById('closeEdit')
+    const emailMsg = document.getElementById('email-msg');
 
     let isPasswordVerified = false;
 
@@ -216,6 +223,24 @@ document.addEventListener('DOMContentLoaded', () => {
     fields.newPw.addEventListener('input', validateMatch);
     fields.newPwCheck.addEventListener('input', validateMatch);
     
+    // 이메일 유효성 검사 추가
+    fields.email.addEventListener('input', () => {
+        const email = fields.email.value.trim();
+        if (!email) {
+            emailMsg.classList.remove('visible');
+            emailMsg.innerText = '';
+            updateButtonState();
+            return;
+        }
+
+        const valid = isValidEmail(email);
+        emailMsg.innerText = valid
+            ? '올바른 이메일 형식입니다.'
+            : '이메일 형식이 올바르지 않습니다.';
+        emailMsg.className = `status-text ${valid ? 'success' : 'error'} visible`;
+
+        updateButtonState();
+    });
 
     /* 3. 각 입력창에 이벤트 리스너 등록 (실시간 체크) */
 
