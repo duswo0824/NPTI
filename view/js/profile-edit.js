@@ -41,6 +41,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const emailMsg = document.getElementById('email-msg');
 
     let isPasswordVerified = false;
+    let currentEncryptedPw = '';
+    let originalEncryptedPw = '';
 
     // 유저 데이터 가져오기(세션)(GET)
     const loadUserData = async () => {
@@ -76,6 +78,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 fields.birth.value = userData.birth || "";
                 fields.age.value = userData.age || "";
                 fields.email.value = userData.email || "";
+                originalEncryptedPw = userData.user_pw || "";
                 
                 // 성별 라디오 버튼
                 const genderRadios = document.getElementsByName('gender');
@@ -170,6 +173,7 @@ document.addEventListener('DOMContentLoaded', () => {
     //     }
     // });
 
+    // 현재 비밀번호 실시간 서버 확인
     fields.currentPw.addEventListener('input', async () => {
 
         const password = fields.currentPw.value;
@@ -206,7 +210,40 @@ document.addEventListener('DOMContentLoaded', () => {
         updateButtonState();
     });
 
-    // 새 비밀번호 매칭
+    // 새 비밀번호 유효성 검사
+    fields.newPw.addEventListener('input', async () => {
+        const newPw = fields.newPw.value;
+        const userId = sessionStorage.getItem("user_id");
+
+        if (!newPw) {
+            newMsg.classList.remove('visible');
+            updateButtonState();
+            return;
+        }
+
+        const response = await fetch(`/users/check-new-password`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                user_id: userId,
+                new_password: newPw
+            })
+        });
+
+        const result = await response.json();
+        if (result.is_same === true || result.is_same === "true") {
+            newMsg.innerText = "사용 중인 비밀번호입니다.";
+            newMsg.className = "status-text error visible";
+        } else {
+            newMsg.innerText = "사용 가능한 비밀번호입니다.";
+            newMsg.className = "status-text success visible";
+        }
+
+        validateMatch();
+        updateButtonState();
+    });
+
+    // 새 비밀번호 확인 입력 시
     const validateMatch = () => {
         if (fields.newPw.value && fields.newPwCheck.value) {
             checkMsg.classList.add('visible');
@@ -214,14 +251,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 fields.newPw.value === fields.newPwCheck.value
                     ? "비밀번호가 일치합니다."
                     : "비밀번호가 일치하지 않습니다.";
+            checkMsg.className =
+                fields.newPw.value === fields.newPwCheck.value
+                    ? "status-text success visible"
+                    : "status-text error visible";
         } else {
             checkMsg.classList.remove('visible');
         }
         updateButtonState();
     };
 
-    fields.newPw.addEventListener('input', validateMatch);
-    fields.newPwCheck.addEventListener('input', validateMatch);
+    fields.newPwCheck.addEventListener('input', () => {
+        validateMatch();
+        updateButtonState();
+    });
     
     // 이메일 유효성 검사 추가
     fields.email.addEventListener('input', () => {

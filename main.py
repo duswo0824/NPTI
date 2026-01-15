@@ -945,12 +945,23 @@ async def verify_password_check(data:dict, db:Session = Depends(get_db)):
     user_id = data.get("user_id")
     current_pw = data.get("current_password")
 
-    user = get_user_info(db, user_id)
-    if user:
-        if user and user.user_pw and verify_password(current_pw, user.user_pw):
-            return {"success": True, "message": "현재 비밀번호와 일치합니다."}
+    user = db.query(UserInfo).filter(UserInfo.user_id == user_id).first()
+    if user and user.user_pw and verify_password(current_pw, user.user_pw):
+        return {"success": True, "message": "현재 비밀번호와 일치합니다."}
 
     return {"success": False, "message": "현재 비밀번호와 일치하지 않습니다."}
+
+@app.post("/users/check-new-password")
+def check_new_password_api(data: dict, db: Session = Depends(get_db)):
+    user_id = data.get("user_id")
+    new_password = data.get("new_password")
+
+    user = db.query(UserInfo).filter(UserInfo.user_id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+
+    is_same = verify_password(new_password, user.user_pw)
+    return {"is_same": is_same}
 
 @app.post("/users/update")
 async def update_user(data: UserUpdate, db: Session = Depends(get_db)):
