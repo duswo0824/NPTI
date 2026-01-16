@@ -98,6 +98,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.log(`User Status: Full Member (${nptiResult})`);
         updateHeaderTitle(nptiResult);
         initSlider('all');
+        initGrid('all');
         initBottomBadges(nptiResult);
 
         // 블러 해제 및 배너 숨김
@@ -195,32 +196,33 @@ async function initTicker() {
             list.appendChild(li);
         });
 
+        if (window.tickerInterval) clearInterval(window.tickerInterval);
+
         // 4. 무한 루프를 위한 첫 번째 요소 복제
         if (id_title_list.length > 1) {
             list.appendChild(list.firstElementChild.cloneNode(true));
+
+            // 5. 애니메이션 로직
+            let currentIndex = 0;
+            const itemHeight = 24;
+
+            window.tickerInterval = setInterval(() => {
+                currentIndex++;
+                list.style.transition = 'transform 1s ease';
+                list.style.transform = `translateY(-${currentIndex * itemHeight}px)`;
+
+                if (currentIndex === id_title_list.length) {
+                    setTimeout(() => {
+                        list.style.transition = 'none';
+                        currentIndex = 0;
+                        list.style.transform = `translateY(0px)`;
+                    }, 1000);
+                }
+            }, 3000);
+        } else {
+            list.style.transform = `translateY(0px)`;
+            list.style.transition = 'none';
         }
-
-        // 5. 애니메이션 로직
-        let currentIndex = 0;
-        const itemHeight = 24;
-
-        // 기존 인터벌이 있다면 제거 (재호출 시 대비)
-        if (window.tickerInterval) clearInterval(window.tickerInterval);
-
-        window.tickerInterval = setInterval(() => {
-            currentIndex++;
-            list.style.transition = 'transform 1s ease';
-            list.style.transform = `translateY(-${currentIndex * itemHeight}px)`;
-
-            if (currentIndex === id_title_list.length) {
-                setTimeout(() => {
-                    list.style.transition = 'none';
-                    currentIndex = 0;
-                    list.style.transform = `translateY(0px)`;
-                }, 1000);
-            }
-        }, 3000);
-
     } catch (err) {
         console.error("속보 로드 중 오류:", err);
         if (tickerSection) tickerSection.style.display = 'none';
@@ -414,7 +416,7 @@ function initBottomBadges(nptiResult) {
         }
     });
 
-    initGrid('all');
+//    initGrid('all');
 }
 
 function toggleSlot(index) {
