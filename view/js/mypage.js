@@ -265,6 +265,8 @@ async function runUpdateSimulation() {
         // long, content, insight, positive
         renderNptiContent(newNPTI);
 
+        applyUpdateLock();
+
         // 2. 성공 메시지 표시
         if (summary) {
             const msg = document.createElement('p');
