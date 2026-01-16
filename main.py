@@ -246,11 +246,9 @@ async def save_test_result(request: Request, payload: dict = Body(...), db: Sess
 async def get_result_page(request: Request, db: Session = Depends(get_db)):
     user_id = request.session.get("user_id")
     if not user_id:
-        print("비로그인 사용자 접근 차단 -> 홈으로 이동")
         return RedirectResponse(url="/login")
     user_data = get_user_npti_info(db, user_id)
     if user_id and not user_data:
-        print(f"진단 데이터 없음: {user_id} -> /test로 이동")
         return RedirectResponse(url="/test")
     return FileResponse("view/html/result.html")
 
@@ -593,17 +591,37 @@ async def get_my_profile(request: Request, db: Session = Depends(get_db)):
         "gender": user['gender']
     }
 
+
 @app.get("/mypage")
-async def get_mypage(request: Request):
+async def get_mypage(request: Request, db: Session = Depends(get_db)):
+    user_id = request.session.get("user_id")
+
+    # 1. 로그인 체크 먼저 (DB 조회 낭비 방지)
+    if not user_id:
+        return RedirectResponse(url="/login")
+
+    # 2. DB 조회 (scalar 사용 추천)
+    param = {"user_id": user_id}
+    sql = text("select admin from user_info where user_id = :user_id")
+    # scalar()를 쓰면 result[0] 할 필요 없이 바로 값이 나옴 (없으면 None)
+    admin_value = db.execute(sql, param).scalar()
+
+    # 3. 권한 체크
+    if admin_value == 0:  # 관리자면 대시보드로
+        return RedirectResponse(url="/dashboard")
+
+    # 4. 일반 회원이면 마이페이지 표시
+    return FileResponse("view/html/mypage.html")
+
+@app.get("/curation")
+def curation_page(request: Request, db: Session = Depends(get_db)):
     user_id = request.session.get("user_id")
     if not user_id:
         return RedirectResponse(url="/login")
-    return FileResponse("view/html/mypage.html")
-
-@app.get("/curation", response_class=HTMLResponse)
-def curation_page():
-    with open("view/html/curation.html", encoding="utf-8") as f:
-        return f.read()
+    user_npti = get_user_npti_info(db, user_id)
+    if user_id and not user_npti:
+        return RedirectResponse(url="/test")
+    return FileResponse("view/html/curation.html")
 
 @app.get("/user/npti/me")
 async def get_user_npti(request: Request,db: Session = Depends(get_db)):
@@ -818,6 +836,8 @@ def update_user_npti(request: Request, db: Session = Depends(get_db)):
     insert_user_npti(db, params)
     # long, content, insight, positive
     request.session['user_npti'] = final_user_npti
+    request.session['nptiResult'] = final_user_npti
+    request.session['npti_result'] = final_user_npti
     print("회원 npti 정보가 성공적으로 업데이트 되었습니다!!!")
 
     return params
@@ -999,18 +1019,25 @@ async def update_user(data: UserUpdate, db: Session = Depends(get_db)):
         logger.info(f'유저 프로필 업데이트 중 서버 에러 발생: {str(e)}')
         raise HTTPException(status_code=500, detail=f"서버 내부 오류: {str(e)}")
 
-@app.get('/check_admin')
-def check_admin(request:Request, db: Session = Depends(get_db)):
-    user_id = request.session.get("user_id")
-    param = {"user_id": user_id}
-    sql = text("select admin from user_info where user_id = :user_id")
-    result = db.execute(sql, param).fetchone()
-    return result.admin
-
 
 @app.get("/dashboard")
-def dashboard():
-    return FileResponse("view/html/dashboard.html")
+def dashboard(request: Request, db: Session = Depends(get_db)):
+    user_id = request.session.get("user_id")
+
+    # 1. 로그인 체크 먼저
+    if not user_id:
+        return RedirectResponse(url="/login")
+
+    # 2. DB 조회
+    param = {"user_id": user_id}
+    sql = text("select admin from user_info where user_id = :user_id")
+    admin_value = db.execute(sql, param).scalar()
+
+    # 3. 권한 체크
+    if admin_value == 0: # 관리자만 통과
+        return FileResponse("view/html/dashboard.html")
+    else: # 일반 회원은 메인으로 추방
+        return RedirectResponse(url="/")
 
 
 @app.get("/members_statistics")
@@ -1052,6 +1079,7 @@ def members_statistics(db: Session = Depends(get_db)):
             FROM user_info U
             LEFT JOIN LatestUserNPTI L 
                 ON U.user_id = L.user_id AND L.rn = 1 
+            WHERE U.activation = 1 AND U.admin = 1
             GROUP BY IFNULL(L.npti_code, '미진단')
             ORDER BY count DESC;
         """)
@@ -1072,6 +1100,7 @@ def members_statistics(db: Session = Depends(get_db)):
                 END AS age_group, 
                 COUNT(*) AS count
             FROM user_info 
+            WHERE activation = 1 and admin = 1
             GROUP BY age_group 
             ORDER BY age_group;
         """)
@@ -1089,7 +1118,8 @@ def members_statistics(db: Session = Depends(get_db)):
         print(result1_2) # 결과: 모든 연령대가 순서대로 존재하며, 없는 그룹은 count: 0으로 보장됨
 
         # 1-3) 성별 비율 --------------------------------------- 쿼리 검증 완료
-        sql1_3 = text("""SELECT user_gender, COUNT(*) as count FROM user_info GROUP BY user_gender;""")
+        sql1_3 = text("""SELECT user_gender, COUNT(*) as count FROM user_info 
+            WHERE activation = 1 and admin = 1 GROUP BY user_gender;""")
 
         # 1. DB 결과 가져오기 (데이터가 있는 성별만 나옴)
         result1_3_raw = rows_to_dict(db.execute(sql1_3).fetchall())
@@ -1147,6 +1177,9 @@ def members_statistics(db: Session = Depends(get_db)):
                 FROM Past7Days d
                 LEFT JOIN user_npti u
                     ON u.updated_at < d.date_period + INTERVAL 1 DAY
+                JOIN user_info ui
+                    ON u.user_id = ui.user_id
+                WHERE ui.activation = 1 AND ui.admin = 1
             )
             SELECT 
                 G.date_period, 
@@ -1198,6 +1231,9 @@ def members_statistics(db: Session = Depends(get_db)):
                 LEFT JOIN user_npti u
                     -- 해당 주차 일요일 밤(다음주 월요일 0시)까지의 누적 기록
                     ON u.updated_at < w.week_start + INTERVAL 1 WEEK
+                JOIN user_info ui
+                    ON u.user_id = ui.user_id
+                WHERE ui.activation = 1 AND ui.admin = 1
             )
             SELECT 
                 -- 날짜를 'YYYY-MM-DD ~ YYYY-MM-DD' 형태로 변환
@@ -1252,6 +1288,9 @@ def members_statistics(db: Session = Depends(get_db)):
                 LEFT JOIN user_npti u
                     -- 해당 월의 말일(다음달 1일 0시 전)까지의 누적 기록
                     ON u.updated_at < m.month_start + INTERVAL 1 MONTH
+                JOIN user_info ui
+                    ON u.user_id = ui.user_id
+                WHERE ui.activation = 1 AND ui.admin = 1
             )
             SELECT 
                 -- 날짜를 'YYYY-MM' 형태로 변환
@@ -1277,26 +1316,33 @@ def members_statistics(db: Session = Depends(get_db)):
         # =========================================================
         sql3 = text("""
             WITH LatestUserSnapshot AS (
-                SELECT npti_code
-                FROM (
-                    SELECT 
-                        npti_code, 
-                        ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY updated_at DESC) as rn
-                    FROM user_npti
-                ) sub
-                WHERE rn = 1
+                SELECT 
+                    u.user_id,
+                    u.npti_code,
+                    -- 유저별 가장 최신 기록 순위 매기기
+                    ROW_NUMBER() OVER (PARTITION BY u.user_id ORDER BY u.updated_at DESC) as rn
+                FROM user_npti u
             )
             SELECT 
                 COUNT(CASE WHEN C.length_type = 'L' THEN 1 END) AS L_count,
                 COUNT(CASE WHEN C.length_type = 'S' THEN 1 END) AS S_count,
+
                 COUNT(CASE WHEN C.article_type = 'C' THEN 1 END) AS C_count,
                 COUNT(CASE WHEN C.article_type = 'T' THEN 1 END) AS T_count,
+
                 COUNT(CASE WHEN C.info_type = 'I' THEN 1 END) AS I_count,
                 COUNT(CASE WHEN C.info_type = 'F' THEN 1 END) AS F_count,
+
                 COUNT(CASE WHEN C.view_type = 'P' THEN 1 END) AS P_count,
                 COUNT(CASE WHEN C.view_type = 'N' THEN 1 END) AS N_count
             FROM LatestUserSnapshot S
-            JOIN npti_code C ON S.npti_code = C.npti_code;
+            -- [핵심 수정] user_info 테이블과 조인하여 회원 상태 확인
+            JOIN user_info UI ON S.user_id = UI.user_id
+            -- NPTI 속성(L/S, C/T...) 정보를 가져오기 위해 조인
+            JOIN npti_code C ON S.npti_code = C.npti_code
+            WHERE S.rn = 1                 -- 최신 기록만
+              AND UI.activation = 1        -- 활성화된 회원만
+              AND UI.admin = 1;            -- 일반 회원만
         """)
         result3 = row_to_dict(db.execute(sql3).fetchone())
         print('result3 완료')
@@ -1327,6 +1373,9 @@ def members_statistics(db: Session = Depends(get_db)):
                 FROM Past7Days d
                 LEFT JOIN user_npti u
                     ON u.updated_at < d.date_period + INTERVAL 1 DAY
+                JOIN user_info ui
+                    ON u.user_id = ui.user_id
+                WHERE ui.activation = 1 AND ui.admin = 1
             )
             SELECT 
                 P.date_period,
@@ -1378,6 +1427,9 @@ def members_statistics(db: Session = Depends(get_db)):
                 FROM Past4Weeks w
                 LEFT JOIN user_npti u
                     ON u.updated_at < w.week_start + INTERVAL 1 WEEK
+                JOIN user_info ui
+                    ON u.user_id = ui.user_id
+                WHERE ui.activation = 1 AND ui.admin = 1
             )
             SELECT 
                 -- 날짜를 'YYYY-MM-DD ~ YYYY-MM-DD' 형태로 변환
@@ -1430,6 +1482,9 @@ def members_statistics(db: Session = Depends(get_db)):
                 FROM Past6Months m
                 LEFT JOIN user_npti u
                     ON u.updated_at < m.month_start + INTERVAL 1 MONTH
+                JOIN user_info ui
+                    ON u.user_id = ui.user_id
+                WHERE ui.activation = 1 AND ui.admin = 1
             )
             SELECT 
                 -- 날짜를 'YYYY-MM' 형태로 변환
@@ -1594,12 +1649,10 @@ def articles_statistics(db: Session = Depends(get_db)):
                         "count": count
                     })
 
+            # 결과 확인
+            print('ES result (최근 7일 NPTI code별 집계 - 0포함) 완료')
         else:
             print("ES Search Failed")
-
-        # 결과 확인
-        print('ES result (최근 7일 NPTI code별 집계 - 0포함) 완료')
-
 
         # 1-2) 필드 : 주
         week_npti_start_date = this_monday - timedelta(weeks=3)
@@ -1689,13 +1742,10 @@ def articles_statistics(db: Session = Depends(get_db)):
                         "category": _code,
                         "count": _cnt
                     })
-
+            # 결과 확인
+            print('result_week_npti_list (최근 4주 NPTI code별 집계 - 0포함) 완료')
         else:
             print("ES Search Failed (Week NPTI)")
-
-        # 결과 확인
-        print('result_week_npti_list (최근 4주 NPTI code별 집계 - 0포함) 완료')
-
 
         # 1-3) 필드 : 월
         _y, _m = this_month_start.year, this_month_start.month
@@ -1705,6 +1755,9 @@ def articles_statistics(db: Session = Depends(get_db)):
             _m += 12
         month_npti_start_date = this_month_start.replace(year=_y, month=_m, day=1)
         month_npti_start_str = month_npti_start_date.strftime('%Y-%m-%d')
+        month_bounds_str = month_npti_start_date.strftime('%Y-%m')
+        today_bounds_str = today.strftime('%Y-%m')
+
         query1_3 = {
             "size": 0,
             "runtime_mappings": {
@@ -1734,8 +1787,8 @@ def articles_statistics(db: Session = Depends(get_db)):
                         "min_doc_count": 0,
                         # 6개월치 버킷 강제 생성
                         "extended_bounds": {
-                            "min": month_npti_start_str,
-                            "max": today_str
+                            "min": month_bounds_str,
+                            "max": today_bounds_str
                         }
                     },
                     "aggs": {
@@ -1787,17 +1840,13 @@ def articles_statistics(db: Session = Depends(get_db)):
 
                     result1_3.append({
                         "date_period": _date_key,
-                        "npti_code": _code,
+                        "category": _code,
                         "count": _cnt
                     })
-
+            # 결과 확인
+            print('result_month_npti_list (최근 6개월 NPTI code별 집계 - 0포함) 완료')
         else:
             print("ES Search Failed (Month NPTI)")
-
-        # 결과 확인
-        print('result_month_npti_list (최근 6개월 NPTI code별 집계 - 0포함) 완료')
-
-
 
         # 2. NPTI별 수집 기사 추이 - linear graph
         # 2-1) 필드 : 일
