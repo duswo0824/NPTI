@@ -111,7 +111,7 @@ def search_news_row(id_:str):
 
 def search_news_condition(search_condition:dict):
     try:
-        result = es.search(index=ES_INDEX, body=search_condition)
+        result = es.search(index=ES_INDEX, body=search_condition, request_timeout=300)
         return result
     except Exception as e:
         logger.error(e)
