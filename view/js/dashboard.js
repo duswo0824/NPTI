@@ -1,4 +1,5 @@
 let globalStatsData = null;
+let globalArticlesData = null;
 let chartInstances = {};
 
 // Chart.js 전역 설정 (폰트 등)
@@ -7,13 +8,44 @@ Chart.defaults.color = '#666';
 
 // 색상 팔레트
 const COLORS = {
-    orange: '#FF7F50',
-    blue: '#36A2EB',
+    orange: '#FF6B00',
+    blue: '#0057FF',
     red: '#FF6384',
     green: '#4BC0C0',
     purple: '#9966FF',
     grey: '#C9CBCF',
-    mix: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#C9CBCF', '#FF7F50', '#20B2AA', '#87CEFA', '#778899', '#DA70D6', '#BDB76B', '#F08080', '#4682B4', '#556B2F']
+    yellow: '#FFCE56',
+    brown:'#A52A2A',
+    mix: ['#FF6384', // Red
+        '#0057FF', // Blue
+        '#FFCE56', // Yellow
+        '#4BC0C0', // Teal
+        '#9966FF', // Purple
+        '#FF6B00', // Orange
+        '#2E8B57', // SeaGreen
+        '#FF4500', // OrangeRed
+        '#4682B4', // SteelBlue
+        '#D2691E', // Chocolate
+        '#00CED1', // DarkTurquoise
+        '#DC143C', // Crimson
+        '#556B2F', // DarkOliveGreen
+        '#000080', // Navy
+        '#FFD700', // Gold
+        '#8A2BE2', // BlueViolet
+        '#A52A2A', // Brown
+        '#00FA9A', // MediumSpringGreen
+        '#C71585', // MediumVioletRed
+        '#708090', // SlateGray
+        '#1E90FF', // DodgerBlue
+        '#ADFF2F', // GreenYellow
+        '#FF1493', // DeepPink
+        '#4B0082', // Indigo
+        '#20B2AA', // LightSeaGreen
+        '#808000', // Olive
+        '#B03060', // Maroon
+        '#3CB44B', // Green
+        '#F032E6'  // Magenta
+    ]
 };
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -26,7 +58,7 @@ async function initDashboard() {
         globalStatsData = await res.json();
         console.log({"statsdata" : globalStatsData});
     } catch (e) {
-        console.error("데이터 로드 실패", e);
+        console.error("회원 통계 데이터 로드 실패", e);
         return;
     }
 
@@ -41,6 +73,14 @@ async function initDashboard() {
 
     // 3. 초기 화면 렌더링
     renderContent('stats');
+
+    try {
+        const resStats = await fetch('/articles_statistics');
+        globalArticlesData = await resStats.json();
+        console.log({"articlesdata" : globalArticlesData});
+    } catch (e) {
+        console.error("기사 통계 데이터 로드 실패", e);
+    }
 }
 
 function setupTabNavigation() {
@@ -93,7 +133,7 @@ function createSection(title, leftField, rightField, isToggleLeft = false) {
 
     const leftBoxHtml = `
         <div class="box-container half">
-            ${createBoxHeader(title, leftField, isToggleLeft)}
+            ${createBoxHeader(title, leftField, isToggleLeft, leftCanvasId)}
             <div class="chart-container">
                 <canvas id="${leftCanvasId}"></canvas>
             </div>
@@ -106,7 +146,7 @@ function createSection(title, leftField, rightField, isToggleLeft = false) {
     } else {
         rightBoxHtml = `
             <div class="box-container half">
-                ${createBoxHeader(title, rightField, !isToggleLeft)}
+                ${createBoxHeader(title, rightField, !isToggleLeft, rightCanvasId)}
                 <div class="chart-container">
                     <canvas id="${rightCanvasId}"></canvas>
                 </div>
@@ -135,7 +175,7 @@ const options = {
     'metrics_short': ['S/L', 'C/T', 'F/I', 'P/N']
 };
 
-function createBoxHeader(title, fieldType, hasToggle) {
+function createBoxHeader(title, fieldType, hasToggle, targetCanvasId) {
     const leftContent = hasToggle
         ? `<div class="toggle-group" data-title="${title}">
                 <button type="button" class="btn-toggle active">일별</button>
@@ -165,7 +205,7 @@ function createBoxHeader(title, fieldType, hasToggle) {
 
             const btnText = isSingleSelect ? 'NPTI' : '필드';
             rightContent = `
-                <div class="custom-dropdown" data-title="${title}" onclick="this.classList.toggle('active')">
+                <div class="custom-dropdown" data-title="${title}" data-target="${targetCanvasId}" onclick="this.classList.toggle('active')">
                     <button class="dropdown-btn" onclick="event.stopPropagation(); this.parentElement.classList.toggle('active')">
                         ${btnText} <span class="arrow">▼</span>
                     </button>
@@ -175,7 +215,7 @@ function createBoxHeader(title, fieldType, hasToggle) {
                 </div>`;
         } else {
             rightContent = `
-                <select class="box-select" data-title="${title}">
+                <select class="box-select" data-title="${title}" data-target="${targetCanvasId}">
                     ${options[fieldType].map(opt => `<option>${opt}</option>`).join('')}
                 </select>`;
         }
@@ -192,8 +232,9 @@ function handleUIEvents(e) {
         toggleBtn.classList.add('active');
 
         const boxTitle = toggleGroup.getAttribute('data-title') || "시간 단위";
+        const targetId = toggleGroup.getAttribute('data-target');
         const selectedValue = toggleBtn.innerText;
-        updateSpecificChart(boxTitle, selectedValue, true);
+        updateSpecificChart(boxTitle, selectedValue, true, targetId);
         return;
     }
 
@@ -222,6 +263,7 @@ function handleUIEvents(e) {
                 });
 
                 const boxTitle = dropdown.getAttribute('data-title') || "선택 필드";
+                const targetId = dropdown.getAttribute('data-target');
                 const btn = dropdown.querySelector('.dropdown-btn');
                 const isRadio = dropdown.querySelector('input[type="radio"]');
 
@@ -230,7 +272,7 @@ function handleUIEvents(e) {
                 }
 
                 console.log("[" + boxTitle + "] 적용된 필드:", selectedValues);
-                updateSpecificChart(boxTitle, selectedValues, false)
+                updateSpecificChart(boxTitle, selectedValues, false, targetId);
                 dropdown.classList.remove('active');
             }
         });
@@ -245,6 +287,14 @@ function drawChartsForCategory(category) {
         createLineChartNPTI('canvas-npti_sub', globalStatsData.result2_day);
         createStackedBarChart('canvas-metrics_main', globalStatsData.result3_npti_type);
         createLineChartType('canvas-metrics_sub', globalStatsData.result4_day);
+    }
+
+    if (!globalArticlesData) return;
+
+    if (category === 'articles') {
+        createLineChartCategory('canvas-news_categories', globalArticlesData.result1_day);
+        createLineChartNPTI('canvas-npti_sub', globalArticlesData.result2_day, 'article_count');
+        createAttributeStackedBar('canvas-metrics_short', globalArticlesData.result3_day);
     }
 }
 
@@ -354,8 +404,8 @@ function createStackedBarChart(canvasId, data) {
         data: {
             labels: labels,
             datasets: [
-                { label: 'Left Type (L,C,I,P)', data: dataLeft, backgroundColor: COLORS.orange },
-                { label: 'Right Type (S,T,F,N)', data: dataRight, backgroundColor: COLORS.grey }
+                { label: 'Left Type (L,C,I,P)', data: dataLeft, backgroundColor: COLORS.blue },
+                { label: 'Right Type (S,T,F,N)', data: dataRight, backgroundColor: COLORS.orange }
             ]
         },
         options: {
@@ -387,9 +437,9 @@ function createStackedBarChart(canvasId, data) {
 }
 
 // ==========================================================
-// [Chart 3] Line Chart (NPTI Code별) - 날짜별 비중(%)
+// [Chart 3] Line Chart (NPTI Code별)
 // ==========================================================
-function createLineChartNPTI(canvasId, rawData) {
+function createLineChartNPTI(canvasId, rawData, countKey = 'user_count') {
     const ctx = document.getElementById(canvasId);
     if (!ctx) return;
     ctx.parentNode.style.height = '320px';
@@ -406,22 +456,12 @@ function createLineChartNPTI(canvasId, rawData) {
     });
     const codes = [...new Set(rawData.map(item => item.npti_code))];
 
-    // [중요] 날짜별 전체 합계(Total Count) 미리 계산
-    const dailyTotals = {};
-    rawData.forEach(item => {
-        const d = item.date_period;
-        if (!dailyTotals[d]) dailyTotals[d] = 0;
-        dailyTotals[d] += item.user_count;
-    });
-
     const datasets = codes.map((code, idx) => {
         const dataPoints = dates.map(date => {
             const found = rawData.find(r => r.date_period === date && r.npti_code === code);
-            const count = found ? found.user_count : 0;
-            const total = dailyTotals[date] || 1; // 0나누기 방지
-
+            const count = found ? found[countKey] : 0;
             // (해당 코드 수 / 그날 전체 사용자 수) * 100
-            return parseFloat(((count / total) * 100).toFixed(1));
+            return count;
         });
 
         return {
@@ -443,18 +483,29 @@ function createLineChartNPTI(canvasId, rawData) {
             responsive: true,
             maintainAspectRatio: false,
             interaction: { mode: 'index', intersect: false },
-            plugins: { legend: { display: false } },
+            plugins: {
+                legend: { display: false },
+                tooltip : {
+                    callbacks : {
+                        label : function (context) {
+                            if (countKey === 'user_count') {
+                                return context.dataset.label + ": " + context.parsed.y + '명';
+                                }
+                            if (countKey === 'article_count') {
+                                return context.dataset.label + ": " + context.parsed.y + '건';
+                                }
+                        }
+                    }
+                }
+            },
             layout: {
                 padding: {top: 20, right: 10, left: 10}
             },
             scales: {
                 y: {
                     beginAtZero: true,
-                    min: 0,
-                    max: 100, // Y축 100% 고정
                     ticks: {
-                        stepSize: 20,
-                        callback: (val) => val + "%"
+                        precision: 0
                     }
                 }
             }
@@ -463,7 +514,7 @@ function createLineChartNPTI(canvasId, rawData) {
 }
 
 // ==========================================================
-// [Chart 4] Line Chart (Type 속성별) - 날짜별 비중(%)
+// [Chart 4] Line Chart (Type 속성별)
 // ==========================================================
 function createLineChartType(canvasId, rawData) {
     const ctx = document.getElementById(canvasId);
@@ -481,20 +532,6 @@ function createLineChartType(canvasId, rawData) {
         return dateStr;
     });
 
-    // 각 날짜별로 Type 합계 구하기 (보통 L+S = 전체, C+T = 전체이므로 L+S를 기준으로 함)
-    // rawData row: {date_period: "...", L_count: 10, S_count: 5...}
-    const rowTotals = {};
-    rawData.forEach(row => {
-        // L과 S의 합을 해당 날짜의 전체 모수로 가정 (MBTI 특성상)
-        rowTotals[row.date_period] = (row.L_count || 0) + (row.S_count || 0);
-        if (rowTotals[row.date_period] === 0) rowTotals[row.date_period] = 1; // 방어
-    });
-
-    const toRowPct = (val, date) => {
-        const total = rowTotals[date];
-        return parseFloat(((val / total) * 100).toFixed(1));
-    };
-
     const types = [
         { key: 'L_count', label: 'Long', color: COLORS.orange },
         { key: 'S_count', label: 'Short', color: COLORS.grey },
@@ -502,13 +539,13 @@ function createLineChartType(canvasId, rawData) {
         { key: 'T_count', label: 'Tale', color: COLORS.purple },
         { key: 'I_count', label: 'Insight', color: COLORS.green },
         { key: 'F_count', label: 'Fact', color: COLORS.red },
-        { key: 'P_count', label: 'Positive', color: COLORS.orange },
-        { key: 'N_count', label: 'Negative', color: COLORS.grey }
+        { key: 'P_count', label: 'Positive', color: COLORS.yellow },
+        { key: 'N_count', label: 'Negative', color: COLORS.brown }
     ];
 
     const datasets = types.map(t => ({
         label: t.label,
-        data: rawData.map(row => toRowPct(row[t.key], row.date_period)),
+        data: rawData.map(row => row[t.key] || 0),
         borderColor: t.color,
         tension: 0.3,
         hidden: false,
@@ -527,14 +564,18 @@ function createLineChartType(canvasId, rawData) {
             layout: {
                 padding: {top:20, right: 10, left :10}
             },
+            plugins: {
+                tooltip : {
+                    callbacks : {
+                        label : function(context) {return context.dataset.label + ': '+context.parsed.y+'건';}
+                    }
+                }
+            },
             scales: {
                 y: {
                     beginAtZero: true,
-                    min: 0,
-                    max: 100, // Y축 100% 고정
                     ticks: {
-                        stepSize :20,
-                        callback: (val) => val + "%"
+                        precision : 0
                     }
                 }
             }
@@ -542,66 +583,327 @@ function createLineChartType(canvasId, rawData) {
     });
 }
 
-function updateSpecificChart(boxTitle, changedValue, isToggleEvent = false) {
-    if (!globalStatsData) return;
+// ==========================================================
+// [Chart 5] Grouped Stacked Bar Chart (기사 속성 4종 쌍 비교)
+// ==========================================================
+function createAttributeStackedBar(canvasId, rawData) {
+    const ctx = document.getElementById(canvasId);
+    if (!ctx) return;
+    ctx.parentNode.style.height = '320px';
 
-    // 1. [Pie Chart] NPTI별 회원 분포
-    if (boxTitle === 'NPTI별 회원 분포' && !isToggleEvent) {
-        let newData = null;
-        let labelKey = '';
+    const existingChart = Chart.getChart(ctx);
+    if (existingChart) existingChart.destroy();
+    if (chartInstances[canvasId]) delete chartInstances[canvasId];
 
-        const selected = changedValue[0];
-        if (selected === 'NPTI') {
-            newData = globalStatsData.result1_npti_code;
-            labelKey = 'npti_code';
-        } else if (selected === '나이') {
-            newData = globalStatsData.result1_age;
-            labelKey = 'age_group';
-        } else if (selected === '성별') {
-            newData = globalStatsData.result1_gender;
-            labelKey = 'user_gender';
+    // 1. 라벨(날짜) 처리
+    const dates = rawData.map(d => d.date_period);
+    const chartLabels = dates.map(dateStr => {
+        return dateStr.includes('\n') ? dateStr.split('\n') : dateStr;
+    });
+
+    // 2. 데이터셋 구성 (4개의 Stack 그룹 정의)
+    // 각 쌍(Pair)은 같은 'stack' ID를 공유해야 위아래로 쌓입니다.
+    const datasets = [
+        // Group 1: Length (L vs S)
+        {
+            label: 'Long',
+            data: rawData.map(d => d.L_count),
+            backgroundColor: COLORS.orange,
+            stack: 'Stack_Length'
+        },
+        {
+            label: 'Short',
+            data: rawData.map(d => d.S_count),
+            backgroundColor: '#FFD580', // 연한 오렌지 (L과 대비)
+            stack: 'Stack_Length'
+        },
+
+        // Group 2: Type (C vs T)
+        {
+            label: 'Content',
+            data: rawData.map(d => d.C_count),
+            backgroundColor: COLORS.blue,
+            stack: 'Stack_Type'
+        },
+        {
+            label: 'Tale',
+            data: rawData.map(d => d.T_count),
+            backgroundColor: '#ADD8E6', // 연한 블루
+            stack: 'Stack_Type'
+        },
+
+        // Group 3: Info (I vs F)
+        {
+            label: 'Insight',
+            data: rawData.map(d => d.I_count),
+            backgroundColor: COLORS.green,
+            stack: 'Stack_Info'
+        },
+        {
+            label: 'Fact',
+            data: rawData.map(d => d.F_count),
+            backgroundColor: '#90EE90', // 연한 그린
+            stack: 'Stack_Info'
+        },
+
+        // Group 4: View (P vs N)
+        {
+            label: 'Positive',
+            data: rawData.map(d => d.P_count),
+            backgroundColor: COLORS.purple,
+            stack: 'Stack_View'
+        },
+        {
+            label: 'Negative',
+            data: rawData.map(d => d.N_count),
+            backgroundColor: '#E6E6FA', // 연한 퍼플
+            stack: 'Stack_View'
         }
-        if (newData) createPieChart('canvas-npti_main', newData, labelKey);
-    }
+    ];
 
-    // 2. [Line Chart] NPTI별 변화 (일/주/월)
-    if (boxTitle === 'NPTI별 회원 분포') {
-        const canvasId = 'canvas-npti_sub';
-        if (isToggleEvent) {
+    chartInstances[canvasId] = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: chartLabels,
+            datasets: datasets
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false,
+            },
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return `${context.dataset.label}: ${context.parsed.y}건`;
+                        }
+                    }
+                },
+                legend: {
+                    position: 'bottom',
+                    labels: { boxWidth: 12, padding: 15 }
+                }
+            },
+            scales: {
+                x: {
+                    stacked: true, // X축 스택 활성화
+                    grid: { display: false }
+                },
+                y: {
+                    stacked: true, // Y축 스택 활성화
+                    beginAtZero: true,
+                    ticks: { precision: 0 }
+                }
+            }
+        }
+    });
+}
+
+// ==========================================================
+// [Chart 6] Line Chart (Category 별)
+// ==========================================================
+function createLineChartCategory(canvasId, rawData) {
+    const ctx = document.getElementById(canvasId);
+    if (!ctx) return;
+    ctx.parentNode.style.height = '320px';
+
+    const existingChart = Chart.getChart(ctx);
+    if (existingChart) existingChart.destroy();
+
+    // 1. 날짜(X축) 추출
+    const dates = [...new Set(rawData.map(item => item.date_period))];
+    const chartLabels = dates.map(dateStr => {
+        return dateStr.includes('\n') ? dateStr.split('\n') : dateStr;
+    });
+
+    // 2. 카테고리(범례) 추출
+    const categories = [...new Set(rawData.map(item => item.category))];
+
+    // 3. 데이터셋 구성
+    const datasets = categories.map((cat, idx) => {
+        const dataPoints = dates.map(date => {
+            const found = rawData.find(r => r.date_period === date && r.category === cat);
+            return found ? found.count : 0;
+        });
+
+        return {
+            label: cat,
+            data: dataPoints,
+            // 색상은 기존 mix 팔레트 활용
+            borderColor: COLORS.mix[idx % COLORS.mix.length],
+            tension: 0.3,
+            fill: false,
+            pointRadius: 3,
+            pointHoverRadius: 5
+        };
+    });
+
+    chartInstances[canvasId] = new Chart(ctx, {
+        type: 'line',
+        data: { labels: chartLabels, datasets: datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { display: false }, // 상단 범례 숨김 (외부 필터 사용 시)
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return context.dataset.label + ": " + context.parsed.y + '건';
+                        }
+                    }
+                }
+            },
+            layout: {
+                padding: { top: 20, right: 10, left: 10 }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: { precision: 0 }
+                }
+            }
+        }
+    });
+}
+
+
+// [수정] 4번째 인자 targetCanvasId 추가 (기존 함수 전체 덮어쓰기)
+function updateSpecificChart(boxTitle, changedValue, isToggleEvent = false, targetCanvasId = null) {
+    if (!globalStatsData && !globalArticlesData) return;
+
+    // [Helper 함수] 차트 재생성 후, 현재 UI(드롭다운)에 체크된 필터값을 읽어 다시 적용하는 함수
+    const reapplyFilter = (tId) => {
+        if (!tId) return;
+        // 해당 캔버스 ID를 타겟으로 하는 드롭다운 찾기
+        const dropdown = document.querySelector(`.custom-dropdown[data-target="${tId}"]`);
+        if (!dropdown) return;
+
+        // 체크된 항목들 가져오기
+        const checkedInputs = dropdown.querySelectorAll('input[type="checkbox"]:checked, input[type="radio"]:checked');
+
+        // 체크된 텍스트 추출
+        const selectedValues = Array.from(checkedInputs).map(input => {
+             const textSpan = input.parentElement.querySelector('.checkbox-text');
+             return textSpan ? textSpan.innerText : input.value;
+        });
+
+        // CASE 2 로직(필터링)을 재귀 호출하여 적용 (isToggleEvent = false)
+        updateSpecificChart(boxTitle, selectedValues, false, tId);
+    };
+
+    // ============================================================
+    // CASE 1: 시간 단위 변경 (Toggle) -> 섹션 내 모든 차트 데이터 교체
+    // ============================================================
+    if (isToggleEvent) {
+        // 1. [Stats] NPTI별 회원 분포 & 변화
+        if (boxTitle === 'NPTI별 회원 분포') {
+            const canvasId = 'canvas-npti_sub';
             let newData = null;
             if (changedValue === '일별') newData = globalStatsData.result2_day;
             else if (changedValue === '주별') newData = globalStatsData.result2_week;
             else if (changedValue === '월별') newData = globalStatsData.result2_month;
-            if (newData) createLineChartNPTI(canvasId, newData);
-        } else {
-            const chart = chartInstances[canvasId];
-            if (chart) {
-                chart.data.datasets.forEach(ds => {
-                    ds.hidden = !changedValue.includes(ds.label);
-                });
-                chart.update();
+
+            if (newData) {
+                createLineChartNPTI(canvasId, newData);
+                reapplyFilter(canvasId); // [추가] 필터 복구
             }
         }
-    }
-
-    // 3. [Line Chart] 4가지 분류별 변화
-    if (boxTitle === 'NPTI 4가지 분류별 회원분포') {
-        const canvasId = 'canvas-metrics_sub';
-        if (isToggleEvent) {
+        // 2. [Stats] 4가지 분류별 변화
+        else if (boxTitle === 'NPTI 4가지 분류별 회원분포') {
+            const canvasId = 'canvas-metrics_sub';
             let newData = null;
             if (changedValue === '일별') newData = globalStatsData.result4_day;
             else if (changedValue === '주별') newData = globalStatsData.result4_week;
             else if (changedValue === '월별') newData = globalStatsData.result4_month;
-            if (newData) createLineChartType(canvasId, newData);
-        } else {
-            const chart = chartInstances[canvasId];
-            if (chart) {
-                chart.data.datasets.forEach(ds => {
-                    ds.hidden = !changedValue.includes(ds.label);
-                });
-                chart.update();
+
+            if (newData) {
+                createLineChartType(canvasId, newData);
+                reapplyFilter(canvasId); // [추가] 필터 복구
             }
         }
+        // 3. [Articles] 카테고리별 수집기사
+        else if (boxTitle === '카테고리별 수집기사') {
+             const canvasId = 'canvas-news_categories';
+             let newData = null;
+             if (changedValue === '일별') newData = globalArticlesData.result1_day;
+             else if (changedValue === '주별') newData = globalArticlesData.result1_week;
+             else if (changedValue === '월별') newData = globalArticlesData.result1_month;
+
+             if (newData) {
+                 createLineChartCategory(canvasId, newData);
+                 reapplyFilter(canvasId); // [추가] 필터 복구
+             }
+        }
+        // 4. [Articles] NPTI별 수집기사 (왼쪽/오른쪽 둘 다 바뀜)
+        else if (boxTitle === 'NPTI별 수집기사') {
+            const leftId = 'canvas-npti_sub';
+            const rightId = 'canvas-metrics_short';
+
+            let leftData = null, rightData = null;
+            if (changedValue === '일별') {
+                leftData = globalArticlesData.result2_day;
+                rightData = globalArticlesData.result3_day;
+            } else if (changedValue === '주별') {
+                leftData = globalArticlesData.result2_week;
+                rightData = globalArticlesData.result3_week;
+            } else if (changedValue === '월별') {
+                leftData = globalArticlesData.result2_month;
+                rightData = globalArticlesData.result3_month;
+            }
+
+            if (leftData) {
+                createLineChartNPTI(leftId, leftData, 'article_count');
+                reapplyFilter(leftId); // [추가] 왼쪽 차트 필터 복구
+            }
+            if (rightData) {
+                createAttributeStackedBar(rightId, rightData);
+                reapplyFilter(rightId); // [추가] 오른쪽 차트 필터 복구
+            }
+        }
+        return;
+    }
+
+    // ============================================================
+    // CASE 2: 필터 변경 (Dropdown) -> 특정 Canvas만 업데이트 (targetCanvasId 사용)
+    // ============================================================
+    if (!targetCanvasId) return;
+
+    // Pie Chart 예외 처리 (데이터 다시 그리기)
+    if (boxTitle === 'NPTI별 회원 분포' && targetCanvasId === 'canvas-npti_main') {
+        let newData = null, labelKey = '';
+        if (changedValue[0] === 'NPTI') { newData = globalStatsData.result1_npti_code; labelKey = 'npti_code'; }
+        else if (changedValue[0] === '나이') { newData = globalStatsData.result1_age; labelKey = 'age_group'; }
+        else if (changedValue[0] === '성별') { newData = globalStatsData.result1_gender; labelKey = 'user_gender'; }
+        if (newData) createPieChart(targetCanvasId, newData, labelKey);
+        return;
+    }
+
+    const chart = chartInstances[targetCanvasId];
+    if (chart) {
+        // Stacked Bar Chart 특수 로직 (Stack 그룹 필터링)
+        if (targetCanvasId === 'canvas-metrics_short') {
+            chart.data.datasets.forEach(ds => {
+                let isVisible = false;
+                if (ds.stack === 'Stack_Length' && changedValue.includes('S/L')) isVisible = true;
+                if (ds.stack === 'Stack_Type' && changedValue.includes('C/T')) isVisible = true;
+                if (ds.stack === 'Stack_Info' && changedValue.includes('F/I')) isVisible = true;
+                if (ds.stack === 'Stack_View' && changedValue.includes('P/N')) isVisible = true;
+                if (changedValue.length === 0) isVisible = true;
+                ds.hidden = !isVisible;
+            });
+        }
+        // 일반 Line/Bar Chart 로직 (Label 필터링)
+        else {
+            chart.data.datasets.forEach(ds => {
+                ds.hidden = !changedValue.includes(ds.label);
+            });
+        }
+        chart.update();
     }
 }
 
