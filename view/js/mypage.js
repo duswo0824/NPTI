@@ -271,7 +271,7 @@ async function runUpdateSimulation() {
             msg.style.cssText = "color:var(--orange); font-weight:800; margin-top:15px;";
             msg.innerHTML = "✨ 최근 유저 행동 데이터를 기반으로 NPTI가 업데이트되었습니다!";
             summary.appendChild(msg);
-            setTimeout(() => msg.remove(), 3000);
+            setTimeout(() => msg.remove(), 300000);
         }
     }
 }
