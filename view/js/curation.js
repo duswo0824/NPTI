@@ -267,50 +267,56 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- 페이지네이션 ---
     function renderPagination(totalItems) {
+        const paginationContainer = document.getElementById('paginationContainer');
+        if (totalItems === 0) {
+        if (paginationContainer) paginationContainer.innerHTML = '';  // 페이지네이션 비움
+        return;  // 함수 종료
+    }
+
         const totalPages = Math.ceil(totalItems / CONFIG.ITEMS_PER_PAGE); //
-    if (totalPages < 1) return ''; //
+        if (totalPages < 1) return; //
 
-    let html = `<div class="pagination" style="margin-top:30px; text-align:center;">`;
+        let html = `<div class="pagination" style="margin-top:30px; text-align:center;">`;
 
-    // 현재 페이지에서 5를 빼서 시작점을 잡되, 최소값은 1로 고정
-    let startPage = Math.max(1, currentPage - 5);
+        // 현재 페이지에서 5를 빼서 시작점을 잡되, 최소값은 1로 고정
+        let startPage = Math.max(1, currentPage - 5);
 
-    // 시작점을 기준으로 10개의 버튼을 보여주되, 전체 페이지 수를 넘지 않음
-    let endPage = Math.min(totalPages, startPage + 9);
+        // 시작점을 기준으로 10개의 버튼을 보여주되, 전체 페이지 수를 넘지 않음
+        let endPage = Math.min(totalPages, startPage + 9);
 
-    // [보정] 마지막 페이지 근처에서 버튼이 10개 미만이 되지 않도록 시작점 재조정
-    if (endPage === totalPages) {
-        startPage = Math.max(1, endPage - 9);
-    }
+        // [보정] 마지막 페이지 근처에서 버튼이 10개 미만이 되지 않도록 시작점 재조정
+        if (endPage === totalPages) {
+            startPage = Math.max(1, endPage - 9);
+        }
 
-    // 처음/이전 버튼
-    html += `<button class="arrow" ${currentPage === 1 ? 'disabled' : ''} data-page="1">《</button>`;
-    html += `<button class="arrow" ${currentPage === 1 ? 'disabled' : ''} data-page="${currentPage - 1}">〈</button>`;
+        // 처음/이전 버튼
+        html += `<button class="arrow" ${currentPage === 1 ? 'disabled' : ''} data-page="1">《</button>`;
+        html += `<button class="arrow" ${currentPage === 1 ? 'disabled' : ''} data-page="${currentPage - 1}">〈</button>`;
 
-    // 번호 생성
-    for (let i = startPage; i <= endPage; i++) {
-        html += `<button class="page-num ${i === currentPage ? 'active' : ''}" data-page="${i}">${i}</button>`;
-    }
+        // 번호 생성
+        for (let i = startPage; i <= endPage; i++) {
+            html += `<button class="page-num ${i === currentPage ? 'active' : ''}" data-page="${i}">${i}</button>`;
+        }
 
-    // 다음/마지막 버튼
-    html += `<button class="arrow" ${currentPage === totalPages ? 'disabled' : ''} data-page="${currentPage + 1}">〉</button>`;
-    html += `<button class="arrow" ${currentPage === totalPages ? 'disabled' : ''} data-page="${totalPages}">》</button>`;
+        // 다음/마지막 버튼
+        html += `<button class="arrow" ${currentPage === totalPages ? 'disabled' : ''} data-page="${currentPage + 1}">〉</button>`;
+        html += `<button class="arrow" ${currentPage === totalPages ? 'disabled' : ''} data-page="${totalPages}">》</button>`;
 
-    html += `</div>`;
+        html += `</div>`;
 
-    const paginationContainer = document.getElementById('paginationContainer');
-    if (paginationContainer) {
-        paginationContainer.innerHTML = html;
-    }
-}
-
-document.addEventListener('click', function (e) {
-    if (e.target.matches('.pagination button[data-page]')) {
-        const page = parseInt(e.target.dataset.page);
-        if (!isNaN(page)) {
-            loadCurationNews(currentCategory, page);
+        // const paginationContainer = document.getElementById('paginationContainer');
+        if (paginationContainer) {
+            paginationContainer.innerHTML = html;
         }
     }
-});
+
+    document.addEventListener('click', function (e) {
+        if (e.target.matches('.pagination button[data-page]')) {
+            const page = parseInt(e.target.dataset.page);
+            if (!isNaN(page)) {
+                loadCurationNews(currentCategory, page);
+            }
+        }
+    });
 
 }); // DOMContentLoaded 종료
