@@ -120,14 +120,14 @@ function getCategoryFromTab(tab) {
 async function getNewsData(category) {
     const name = CAT_NAMES[category] || '전체';
     const { isLoggedIn, nptiResult } = globalSession;
-
+    const timestamp = new Date().getTime();
     let typeTag, typeId;
 
     if (isLoggedIn && nptiResult) {
         let typeTag = `[${nptiResult}]`;
         let typeId = nptiResult;
         try {
-            const url = `/render_general_npti?category=${encodeURIComponent(name)}&npti_code=${typeId}`;
+            const url = `/render_general_npti?category=${encodeURIComponent(name)}&npti_code=${typeId}&t=${timestamp}`;
             const response = await fetch(url);
             if (!response.ok) {
                 throw Error(`status: ${response.status}`);
@@ -146,7 +146,7 @@ async function getNewsData(category) {
         let typeTag = `[NPTI PICK]`;
         let typeId = "GUEST";
         try {
-            const url = `/render_general?category=${encodeURIComponent(name)}`;
+            const url = `/render_general?category=${encodeURIComponent(name)}&t=${timestamp}`;
             const response = await fetch(url);
             if (!response.ok) {
                 throw Error(`status: ${response.status}`);

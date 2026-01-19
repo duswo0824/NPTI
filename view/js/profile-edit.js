@@ -11,7 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 이메일 유효성 검사 함수 추가
     const isValidEmail = (email) => {
-        const pattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        const pattern = /^[^\s@]+@[^\s@]+\.(com|net|org|kr|co\.kr)$/i;
         return pattern.test(email);
     };
 

@@ -2,6 +2,7 @@ from fastapi import FastAPI, Depends, Query, Request, Body, HTTPException
 from fastapi.responses import FileResponse
 from starlette.responses import JSONResponse, RedirectResponse, HTMLResponse
 from starlette.staticfiles import StaticFiles
+import random
 import pandas as pd
 import asyncio
 from algorithm.user_NPTI import model_predict_proba
@@ -877,70 +878,165 @@ def render_breaking():
 
     return {"breaking_news": id_title_list, "msg":"데이터 있음"}
 
+
 @app.get("/render_general")
-def render_general(category:str):
+def render_general(category: str):
     news_list = []
-    if category == "전체" or category == 'all':
-        cate_list = ["정치", "경제", "사회", "생활/문화", "IT/과학", "세계", "스포츠","연예","지역"]
-        for category in cate_list:
-            query = {"query": {"match":{"category":category}}, "sort": [{"pubdate": {"order": "desc"}}],
-                     "size": 1, "_source": ["news_id", "title", "content", "img"]}
+
+    # 공통적으로 사용할 쿼리 옵션
+    base_source = ["news_id", "title", "content", "img"]
+    sort_order = [{"pubdate": {"order": "desc"}}]
+
+    if category in ["전체", "all"]:
+        cate_list = ["정치", "경제", "사회", "생활/문화", "IT/과학", "세계", "스포츠", "연예", "지역"]
+        for cat in cate_list:  # 변수명 category -> cat 으로 변경 (충돌 방지)
+            query = {
+                "sort": sort_order,
+                "size": 5,
+                "_source": base_source,
+                "query": {
+                    "bool": {
+                        "must": {"match": {"category": cat}},
+                        # filter와 must_not은 bool 안에 있어야 합니다.
+                        "filter": [{"exists": {"field": "img"}}],
+                        "must_not": [{"term": {"img": ""}}]
+                    }
+                }
+            }
             res = search_news_condition(query)
-            src = res["hits"]["hits"][0]["_source"]
-            news_item = {"news_id": src.get("news_id", ""),
-                         "title": src.get("title", ""),
-                         "desc": src.get("content", ""),
-                         "img": src.get("img", ""),
-                         "link": f"/article?news_id={src['news_id']}"}
-            news_list.append(news_item)
-    else :
-        query = {"query": {"match":{"category":category}}, "sort": [{"pubdate": {"order": "desc"}}],
-                 "size": 9, "_source": ["news_id", "title", "content", "img"]}
+
+            # [중요] 검색 결과가 있을 때만 접근 (IndexError 방지)
+            hits = res.get("hits", {}).get("hits", [])
+            if hits:
+                random_hit = random.choice(hits)
+                src = random_hit["_source"]
+                news_item = {
+                    "news_id": src.get("news_id", ""),
+                    "title": src.get("title", ""),
+                    "desc": src.get("content", ""),
+                    "img": src.get("img", ""),
+                    "link": f"/article?news_id={src.get('news_id', '')}"
+                }
+                news_list.append(news_item)
+
+    else:
+        query = {
+            "sort": sort_order,
+            "size": 20,
+            "_source": base_source,
+            "query": {
+                "bool": {
+                    "must": {"match": {"category": category}},
+                    "filter": [{"exists": {"field": "img"}}],
+                    "must_not": [{"term": {"img": ""}}]
+                }
+            }
+        }
         res = search_news_condition(query)
-        for hit in res["hits"]["hits"]:
-            src = hit["_source"]
-            news_item = {"news_id": src.get("news_id", ""),
-                         "title": src.get("title", ""),
-                         "desc": src.get("content", ""),
-                         "img": src.get("img", ""),
-                         "link": f"/article?news_id={src['news_id']}"}
-            news_list.append(news_item)
+
+        # 검색 결과 반복문
+        hits = res.get("hits", {}).get("hits", [])
+        if hits:
+            random.shuffle(hits)
+            selected_hit = hits[:9]
+            for hit in selected_hit:
+                src = hit["_source"]
+                news_item = {
+                    "news_id": src.get("news_id", ""),
+                    "title": src.get("title", ""),
+                    "desc": src.get("content", ""),
+                    "img": src.get("img", ""),
+                    "link": f"/article?news_id={src.get('news_id', '')}"
+                }
+                news_list.append(news_item)
+
     return news_list
 
+
 @app.get("/render_general_npti")
-def render_general(category:str, npti_code:str, db: Session = Depends(get_db)):
+def render_general_npti(category: str, npti_code: str, db: Session = Depends(get_db)):
     news_list = []
+
+    # SQL 파라미터 바인딩
     sql = text("select news_id from articles_npti where npti_code = :code")
-    params = {"code":npti_code}
-    news_ids = db.execute(sql, params).scalars().fetchall()
+    params = {"code": npti_code}
+
+    # .scalars().all()을 사용하여 확실하게 리스트로 변환
+    news_ids = db.execute(sql, params).scalars().all()
+
     if not news_ids:
         return []
-    if category == "전체" or category == 'all':
+
+    base_source = ["news_id", "title", "content", "img"]
+    sort_order = [{"pubdate": {"order": "desc"}}]
+
+    if category in ["전체", "all"]:
         cate_list = ["정치", "경제", "사회", "생활/문화", "IT/과학", "세계", "스포츠", "연예", "지역"]
-        for category in cate_list:
-            query = {"size": 1,"_source": ["news_id", "title", "content", "img"],"sort": [{"pubdate": {"order": "desc"}}],
-                    "query": {"bool": {"must": {"match":{"category":category}},"filter": [{"terms": {"news_id": news_ids}}]}}}
+        for cat in cate_list:
+            query = {
+                "size": 10,
+                "_source": base_source,
+                "sort": sort_order,
+                "query": {
+                    "bool": {
+                        "must": {"match": {"category": cat}},
+                        # terms 쿼리에 news_ids 리스트 전달
+                        "filter": [
+                            {"terms": {"news_id": news_ids}},
+                            {"exists": {"field": "img"}}
+                        ],
+                        "must_not": [{"term": {"img": ""}}]
+                    }
+                }
+            }
             res = search_news_condition(query)
-            if res["hits"]["hits"]:
-                src = res["hits"]["hits"][0]["_source"]
-                news_item = {"news_id": src.get("news_id", ""),
-                             "title": src.get("title", ""),
-                             "desc": src.get("content", ""),
-                             "img": src.get("img", ""),
-                             "link": f"/article?news_id={src['news_id']}"}
+
+            # [중요] 빈 결과 체크
+            hits = res.get("hits", {}).get("hits", [])
+            if hits:
+                random_hit = random.choice(hits)
+                src = random_hit["_source"]
+                news_item = {
+                    "news_id": src.get("news_id", ""),
+                    "title": src.get("title", ""),
+                    "desc": src.get("content", ""),
+                    "img": src.get("img", ""),
+                    "link": f"/article?news_id={src.get('news_id', '')}"
+                }
                 news_list.append(news_item)
-    else :
-        query = {"size": 9,"_source": ["news_id", "title", "content", "img"],"sort": [{"pubdate": {"order": "desc"}}],
-            "query": {"bool": {"must": {"match":{"category":category}},"filter": [{"terms": {"news_id": news_ids}}]}}}
+    else:
+        query = {
+            "size": 20,
+            "_source": base_source,
+            "sort": sort_order,
+            "query": {
+                "bool": {
+                    "must": {"match": {"category": category}},
+                    "filter": [
+                        {"terms": {"news_id": news_ids}},
+                        {"exists": {"field": "img"}}
+                    ],
+                    "must_not": [{"term": {"img": ""}}]
+                }
+            }
+        }
         res = search_news_condition(query)
-        for hit in res["hits"]["hits"]:
-            src = hit["_source"]
-            news_item = {"news_id": src.get("news_id", ""),
-                         "title": src.get("title", ""),
-                         "desc": src.get("content", ""),
-                         "img": src.get("img", ""),
-                         "link": f"/article?news_id={src['news_id']}"}
-            news_list.append(news_item)
+
+        hits = res.get("hits", {}).get("hits", [])
+        if hits:
+            random.shuffle(hits)
+            selected_hits = hits[:9]
+            for hit in selected_hits:
+                src = hit["_source"]
+                news_item = {
+                    "news_id": src.get("news_id", ""),
+                    "title": src.get("title", ""),
+                    "desc": src.get("content", ""),
+                    "img": src.get("img", ""),
+                    "link": f"/article?news_id={src.get('news_id', '')}"
+                }
+                news_list.append(news_item)
+
     return news_list
 
 @app.get("/profile-edit")
@@ -1569,15 +1665,6 @@ def articles_statistics(db: Session = Depends(get_db)):
         # 1-1) 필드 : 일
         query1_1 = {
             "size": 0,
-            "runtime_mappings": {
-                "category_runtime": {
-                    "type": "keyword",
-                    "script": {
-                        # _source에서 값을 꺼내와 임시 keyword 필드로 만듦
-                        "source": "if (params['_source'].containsKey('category')) { emit(params['_source']['category'].toString()) }"
-                    }
-                }
-            },
             "query": {
                 "range": {
                     "pubdate": {
@@ -1603,7 +1690,7 @@ def articles_statistics(db: Session = Depends(get_db)):
                         "by_category": {
                             "terms": {
                                 # 위에서 정의한 runtime 필드를 사용
-                                "field": "category_runtime",
+                                "field": "category.keyword",
                                 "size": 100,
                                 "min_doc_count": 0
                             }
@@ -1660,14 +1747,6 @@ def articles_statistics(db: Session = Depends(get_db)):
 
         query1_2 = {
             "size": 0,
-            "runtime_mappings": {
-                "category_runtime": {
-                    "type": "keyword",
-                    "script": {
-                        "source": "if (params['_source'].containsKey('category')) { emit(params['_source']['category'].toString()) }"
-                    }
-                }
-            },
             "query": {
                 "range": {
                     "pubdate": {
@@ -1692,7 +1771,7 @@ def articles_statistics(db: Session = Depends(get_db)):
                     "aggs": {
                         "by_category": {
                             "terms": {
-                                "field": "category_runtime",
+                                "field": "category.keyword",
                                 "size": 100,
                                 "min_doc_count": 0
                             }
@@ -1760,15 +1839,6 @@ def articles_statistics(db: Session = Depends(get_db)):
 
         query1_3 = {
             "size": 0,
-            "runtime_mappings": {
-                "category_runtime": {
-                    "type": "keyword",
-                    "script": {
-                        # _source에서 category 값을 꺼내 임시 keyword 필드로 변환
-                        "source": "if (params['_source'].containsKey('category')) { emit(params['_source']['category'].toString()) }"
-                    }
-                }
-            },
             "query": {
                 "range": {
                     "pubdate": {
@@ -1794,7 +1864,7 @@ def articles_statistics(db: Session = Depends(get_db)):
                     "aggs": {
                         "by_category": {
                             "terms": {
-                                "field": "category_runtime",
+                                "field": "category.keyword",
                                 "size": 100,
                                 "min_doc_count": 0
                             }
